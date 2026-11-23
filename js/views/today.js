@@ -1,0 +1,253 @@
+import { S, peekDay, day, mutate, latestWeight } from '../store.js';
+import { dayStatus, totals, streak, plannedActivity, workoutsOn, makeRestGentle } from '../planner.js';
+import { tr, L, n0, n1, greeting, longDate, minutesLeft, kindName } from '../i18n.js';
+import { icon, ring, mealsBar, fodmapBadge, sparkline, plate, toast, sheetOpen } from '../ui.js';
+import { atePlannedSheet, smallerSheet, skipCurrent, editLogSheet, recipeShort } from '../meals.js';
+import { WORDS } from '../data/words.js';
+import { WORKOUTS } from '../data/workouts.js';
+import { esc, dayKey, nowMinutes, clock, dayNum, isIOS, isStandalone } from '../util.js';
+import { nav } from '../nav.js';
+import { update, applyUpdate } from '../updates.js';
+import { getLang } from '../i18n.js';
+
+const LEVELS = [
+  ['good', () => tr('Good', 'Bra')],
+  ['okay', () => tr('Okay', 'Ok')],
+  ['queasy', () => tr('Queasy', 'Kvalm')],
+  ['rough', () => tr('Rough', 'Dårlig')],
+];
+
+function latestStomach(d) {
+  const c = d.stomach?.[d.stomach.length - 1];
+  if (!c) return null;
+  return Date.now() - c.ts < 4 * 3600 * 1000 ? c : null;
+}
+
+function progressCard(list, t) {
+  const st = S();
+  const calm = st.prefs.calm;
+  const goal = st.profile.goalKcal;
+  let frac;
+  let center;
+  let side;
+  const mealsLine = `<div><span class="small muted" style="display:block;margin-bottom:7px">${tr('Meals', 'Måltider')} · ${t.done} ${tr('of', 'av')} ${t.total}</span>${mealsBar(list)}</div>`;
+  if (!calm && goal) {
+    frac = t.kcal / goal;
+    center = `<span class="v num">${Math.round(frac * 100)}%</span><span class="tiny muted">${tr('of your goal', 'av målet')}</span>`;
+    side = `<div><span class="small muted" style="display:block">${tr('Eaten today', 'Spist i dag')}</span>
+      <span class="num" style="font-size:24px;font-weight:700;letter-spacing:-0.02em">${n0(t.kcal)}</span><span class="small muted num"> / ${n0(goal)} kcal</span></div>`;
+  } else if (!calm) {
+    frac = t.total ? t.done / t.total : 0;
+    center = `<span class="v num">${t.done}/${t.total}</span><span class="tiny muted">${tr('meals', 'måltider')}</span>`;
+    side = `<div><span class="small muted" style="display:block">${tr('Eaten today', 'Spist i dag')}</span>
+      <span class="num" style="font-size:24px;font-weight:700;letter-spacing:-0.02em">${n0(t.kcal)} kcal</span></div>`;
+  } else {
+    frac = t.total ? t.done / t.total : 0;
+    center = `<span class="v num">${t.done}/${t.total}</span><span class="tiny muted">${tr('meals', 'måltider')}</span>`;
+    const msg = frac >= 1 ? tr('Every meal done. Brilliant.', 'Alle måltider gjort. Strålende.')
+      : frac >= 0.5 ? tr('Halfway. Nice and steady.', 'Halvveis. Fint og jevnt.')
+      : frac > 0 ? tr('Good start. Keep it gentle.', 'God start. Ta det rolig.')
+      : tr("Let's start small.", 'Vi starter smått.');
+    side = `<div><span class="small muted" style="display:block">${tr('Calm mode', 'Rolig modus')}</span><span style="font-size:18px;font-weight:600;line-height:1.3">${msg}</span></div>`;
+  }
+  return `<section class="card hero" aria-label="${tr("Today's progress", 'Fremgang i dag')}">
+    ${ring(frac, center)}
+    <div class="col grow" style="gap:12px">${side}${mealsLine}</div>
+  </section>`;
+}
+
+function eatNowCard(current, list) {
+  const calm = S().prefs.calm;
+  if (!list.length) {
+    return `<section class="card soft"><p class="h3">${tr('No meal times set', 'Ingen måltider satt opp')}</p>
+      <a class="btn primary" href="#/settings">${tr('Set meal times', 'Sett opp måltider')}</a></section>`;
+  }
+  if (!current) {
+    return `<section class="card soft" aria-label="${tr('All done', 'Ferdig')}">
+      <div class="row">${icon('check', 22)}<p class="h3">${tr('That is every meal today.', 'Det var alle dagens måltider.')}</p></div>
+      <p class="small soft">${tr('Your body thanks you. Hungry later? A small snack is always welcome.', 'Kroppen takker deg. Sulten senere? Et lite mellommåltid er alltid velkomment.')}</p>
+      <a class="btn secondary" href="#/log">${icon('plus', 18)} ${tr('Log a snack', 'Logg et mellommåltid')}</a></section>`;
+  }
+  const now = nowMinutes();
+  const label = current.state === 'now'
+    ? `${tr('Eat now', 'Spis nå')} · ${current.time}`
+    : current.state === 'soon'
+      ? `${tr('Up next', 'Snart')} · ${current.time} · ${minutesLeft(current.min - now)}`
+      : `${tr('Next meal', 'Neste måltid')} · ${current.time} · ${minutesLeft(current.min - now)}`;
+  const info = current.info;
+  const r = info.recipe;
+  const title = r ? `<a href="#/recipe/${r.id}" style="color:inherit;text-decoration:none">${esc(info.title)}</a>` : esc(info.title);
+  const desc = r ? esc(recipeShort(r)) : '';
+  return `<section class="card" aria-label="${tr('What to eat', 'Hva du skal spise')}">
+    <div class="row between"><span class="badge accent" style="font-size:13px;padding:6px 12px">${label}</span>
+      <span class="row tiny muted" style="gap:5px">${icon('sparkle', 14)}${kindName(current.slot.kind)}</span></div>
+    <div class="row top" style="gap:14px">${plate(r, 60)}
+      <div class="grow"><h2 style="font-size:23px;font-weight:700;letter-spacing:-0.02em;line-height:1.2">${title}</h2>
+      ${desc ? `<p class="small soft" style="margin-top:5px;line-height:1.45">${desc}</p>` : ''}</div></div>
+    <div class="row wrap" style="gap:6px">${fodmapBadge(info.fodmap || 'low')}${r ? `<span class="badge">${r.min} min</span>` : ''}${!calm && info.kcal ? `<span class="badge num">${n0(info.kcal)} kcal</span>` : ''}</div>
+    <div class="btns"><button class="btn primary" data-act="ate">${tr('I ate it', 'Jeg spiste det')}</button>
+      <button class="btn secondary" data-act="smaller">${tr('Smaller option', 'Mindre alternativ')}</button></div>
+    <div class="row between"><a class="link-btn" href="#/coach">${tr('Not feeling it? Talk to the coach', 'Ikke lyst? Snakk med coachen')}</a>
+      <button class="link-btn" style="color:var(--muted)" data-act="skip">${tr('Skip', 'Hopp over')}</button></div>
+  </section>`;
+}
+
+function tiles() {
+  const key = dayKey();
+  const w = latestWeight();
+  const ws = S().weights;
+  const first = ws[0];
+  const recent = ws.slice(-10);
+  const change = w && first && ws.length > 1 ? w.kg - first.kg : null;
+  const weightTile = w
+    ? `<a class="tile" href="#/progress/body"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+        <span class="big num">${n1(w.kg)} kg</span>${sparkline(recent)}
+        <span class="tiny" style="font-weight:600;color:var(--accent);margin-top:auto">${change != null ? `${change >= 0 ? '+' : ''}${n1(change)} kg ${tr('since start', 'siden start')}` : tr('Your starting point', 'Startpunktet ditt')}</span></a>`
+    : `<a class="tile" href="#/progress/body"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+        <span class="big">${icon('scale', 26)}</span><span class="tiny" style="font-weight:600;color:var(--accent)">${tr('Log your weight', 'Logg vekten din')}</span></a>`;
+  const act = plannedActivity(key);
+  const done = workoutsOn(key);
+  const wk = WORKOUTS[act];
+  const trainTile = `<a class="tile" href="#/train"><span class="small muted">${tr('Training today', 'Trening i dag')}</span>
+      <span class="big" style="font-size:20px">${act === 'rest' ? tr('Rest day', 'Hviledag') : esc(L(wk?.name))}</span>
+      <span class="small soft">${act === 'rest' ? tr('Recover and refuel', 'Hvil og spis godt') : `${wk?.minutes} min`}</span>
+      <span class="tiny" style="margin-top:auto;font-weight:600;color:var(--accent)">${done.length ? (done.some((x) => x.wid === act) ? `${tr('Done', 'Ferdig')} ✓` : `${tr('Did', 'Gjorde')}: ${esc(done.map((x) => L(WORKOUTS[x.wid]?.name) || x.wid).join(', '))} ✓`) : act === 'rest' ? tr('A walk is a bonus', 'En gåtur er en bonus') : tr('Tap to start', 'Trykk for å starte')}</span></a>`;
+  return `<div class="grid2">${weightTile}${trainTile}</div>`;
+}
+
+function stomachCard(d) {
+  const last = latestStomach(d);
+  return `<section class="card tight" aria-label="${tr('Stomach check-in', 'Magesjekk')}">
+    <h2 class="h3">${tr("How's your stomach right now?", 'Hvordan er magen akkurat nå?')}</h2>
+    <div class="grid2" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:6px">
+      ${LEVELS.map(([id, label]) => `<button class="chip ${last?.level === id ? 'on' : ''}" style="justify-content:center;min-height:44px;border-radius:14px" aria-pressed="${last?.level === id}" data-act="stomach" data-level="${id}">${label()}</button>`).join('')}
+    </div></section>`;
+}
+
+function gentleNote(d, current) {
+  const last = latestStomach(d);
+  if (!last || (last.level !== 'queasy' && last.level !== 'rough') || !current) return '';
+  if (d.gentleAt && d.gentleAt > last.ts) return '';
+  return `<div class="note amber">${icon('leaf', 18)}<div class="grow col" style="gap:8px">
+    <span>${tr('Rough stomach? I can switch the rest of today to the gentlest options: cold smoothie, soup, butter rice.', 'Dårlig mage? Jeg kan bytte resten av dagen til de mildeste valgene: kald smoothie, suppe, smørris.')}</span>
+    <div class="row" style="gap:8px"><button class="btn small primary" data-act="gentle">${tr('Make it gentle', 'Gjør det mildt')}</button><a class="btn small secondary" href="#/coach">${tr('Talk to coach', 'Snakk med coach')}</a></div></div></div>`;
+}
+
+function eatenList(d) {
+  const calm = S().prefs.calm;
+  const logs = d.logs.slice().sort((a, b) => a.ts - b.ts);
+  return `<section class="card" aria-label="${tr('Eaten today', 'Spist i dag')}">
+    <div class="row between"><h2 class="h3">${tr('Eaten today', 'Spist i dag')}</h2><a class="link-btn" href="#/log">${icon('plus', 16)} ${tr('Add', 'Legg til')}</a></div>
+    ${logs.length ? `<div class="list">${logs.map((l) => `<button class="item" data-act="editlog" data-id="${l.id}">
+        <span class="small muted num" style="width:42px">${clock(l.ts)}</span>
+        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(l.title)}</span>
+        ${l.portion && l.portion < 1 ? `<span class="s">${l.portion === 0.25 ? tr('a few bites', 'noen biter') : l.portion === 0.5 ? tr('half', 'halvparten') : '¾'}</span>` : ''}</span>
+        ${calm ? '' : `<span class="small num soft">${n0(l.kcal)}</span>`}</button>`).join('')}</div>`
+      : `<p class="small muted">${tr('Nothing logged yet today. Your first meal is the hardest, and it can be small.', 'Ingenting logget ennå i dag. Det første måltidet er tyngst, og det kan være lite.')}</p>`}
+  </section>`;
+}
+
+function wordsCard() {
+  const st = S();
+  const idx = (dayNum(dayKey()) + (st.wordOffset || 0)) % WORDS.length;
+  const w = WORDS[idx];
+  return `<button class="card flat" style="background:transparent;padding:4px 4px 0;text-align:left;border:none" data-act="word" aria-label="${tr('Show another', 'Vis en annen')}">
+    <p style="font-size:18px;font-weight:600;line-height:1.4;color:var(--soft)">${esc(getLang() === 'nb' ? w[1] : w[0])}</p>
+    <span class="tiny muted">${tr('Tap for another', 'Trykk for en ny')}</span></button>`;
+}
+
+function installNote() {
+  if (!isIOS() || isStandalone() || S().prefs.hideInstall) return '';
+  return `<div class="note">${icon('phone', 18)}<div class="grow"><span>${tr('Put Vektplan on your Home Screen: tap the Share button in Safari, then "Add to Home Screen".', 'Legg Vektplan på Hjem-skjermen: trykk Del-knappen i Safari, og så «Legg til på Hjem-skjerm».')}</span>
+    <button class="link-btn" data-act="hideInstall" style="display:block">${tr('Got it', 'Skjønner')}</button></div></div>`;
+}
+
+function updateBanner() {
+  if (update.status !== 'ready' && update.status !== 'available') return '';
+  return `<button class="banner" data-act="update">${icon('refresh', 20)}<span class="grow">${tr('A new version of Vektplan is ready. Tap to update.', 'En ny versjon av Vektplan er klar. Trykk for å oppdatere.')}</span></button>`;
+}
+
+export function render() {
+  const st = S();
+  const key = dayKey();
+  const d = peekDay(key);
+  const { list, current } = dayStatus(key);
+  const t = totals(key);
+  const s = streak();
+  const name = st.profile.name ? `, ${esc(st.profile.name)}` : '';
+  return `<div class="screen">
+    <div class="blob b1"></div><div class="blob b2"></div>
+    ${updateBanner()}
+    <header class="head">
+      <div class="titles"><p class="eyebrow">${longDate()}${s >= 2 ? ` · <span style="color:var(--accent);font-weight:600">${icon('flame', 13, 'style="vertical-align:-2px"')} ${s} ${tr('days in a row', 'dager på rad')}</span>` : ''}</p>
+      <h1 class="h1">${greeting()}${name}</h1></div>
+      <div class="row" style="gap:8px">
+        <a class="icon-btn surface accent" href="#/coach" aria-label="${tr('Coach', 'Coach')}">${icon('sparkle')}</a>
+        <a class="icon-btn surface" href="#/settings" aria-label="${tr('Settings', 'Innstillinger')}">${icon('sliders')}</a>
+      </div>
+    </header>
+    ${installNote()}
+    ${progressCard(list, t)}
+    ${gentleNote(d, current)}
+    ${eatNowCard(current, list)}
+    ${tiles()}
+    ${stomachCard(d)}
+    ${eatenList(d)}
+    ${wordsCard()}
+  </div>`;
+}
+
+let timer = null;
+export function mount() {
+  clearInterval(timer);
+  timer = setInterval(() => {
+    const a = document.activeElement;
+    if (sheetOpen() || (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) return;
+    nav.rerender();
+  }, 60_000);
+}
+export function unmount() {
+  clearInterval(timer);
+}
+
+export const actions = {
+  ate: () => {
+    const { current } = dayStatus();
+    if (current) atePlannedSheet(dayKey(), current);
+  },
+  smaller: () => {
+    const { current } = dayStatus();
+    if (current) smallerSheet(dayKey(), current);
+  },
+  skip: () => {
+    const { current } = dayStatus();
+    if (current) skipCurrent(dayKey(), current);
+  },
+  stomach: (el) => {
+    const level = el.dataset.level;
+    mutate(() => day().stomach.push({ ts: Date.now(), level }));
+    const msg = {
+      good: tr('Love that. Keep riding the good wave.', 'Herlig. Nyt den gode dagen.'),
+      okay: tr('Okay is good enough. Small and steady.', 'Ok er godt nok. Lite og jevnt.'),
+      queasy: tr('Sorry. Cold, plain and small helps. Sip, don’t rush.', 'Så kjipt. Kaldt, enkelt og lite hjelper. Små slurker, ingen hast.'),
+      rough: tr('That sounds hard. Be gentle with yourself today.', 'Det høres tøft ut. Vær snill med deg selv i dag.'),
+    }[level];
+    toast(msg, 3000);
+    nav.rerender();
+  },
+  gentle: () => {
+    const n = makeRestGentle();
+    toast(n ? tr('Done. The rest of today is extra gentle.', 'Ferdig. Resten av dagen er ekstra mild.') : tr('Nothing left to change today.', 'Ingenting igjen å endre i dag.'));
+    nav.rerender();
+  },
+  editlog: (el) => editLogSheet(dayKey(), el.dataset.id),
+  word: () => {
+    mutate((s) => { s.wordOffset = (s.wordOffset || 0) + 1; });
+    nav.rerender();
+  },
+  hideInstall: () => {
+    mutate((s) => { s.prefs.hideInstall = true; });
+    nav.rerender();
+  },
+  update: () => applyUpdate(),
+};
