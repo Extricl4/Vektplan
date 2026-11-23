@@ -1,7 +1,14 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "date": "2026-11-23",
-  "notes": "First version of Vektplan.",
-  "notes_nb": "Første versjon av Vektplan.",
-  "history": []
+  "notes": "Reloading the app from Settings no longer touches other apps on the same site.",
+  "notes_nb": "Å laste appen på nytt fra Innstillinger påvirker ikke lenger andre apper på samme nettsted.",
+  "history": [
+    {
+      "version": "1.0.0",
+      "date": "2026-11-23",
+      "notes": "First version of Vektplan.",
+      "notes_nb": "Første versjon av Vektplan."
+    }
+  ]
 }

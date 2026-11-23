@@ -129,8 +129,10 @@ export async function forceRefresh() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys.filter((k) => k.startsWith('vektplan-')).map((k) => caches.delete(k)));
+    // Only Vektplan's own worker: other apps on the same site (like Mage) are left alone.
+    const scope = new URL('./', location.href).href;
     const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
-    await Promise.all(regs.map((r) => r.unregister()));
+    await Promise.all(regs.filter((r) => r.scope === scope).map((r) => r.unregister()));
   } catch (e) {
     console.warn(e);
   }
