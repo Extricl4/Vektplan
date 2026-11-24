@@ -136,7 +136,7 @@ function minutesSheet(title, onSave, preset = 20) {
 
 export function saveWorkout(wid, minutes, sets = 0) {
   mutate((s) => {
-    s.workouts.push({ id: uid(), date: dayKey(), wid, minutes: Math.max(1, Math.round(minutes)), sets, ts: Date.now() });
+    s.workouts.push({ id: uid(), date: dayKey(), wid, minutes: Math.min(300, Math.max(1, Math.round(minutes))), sets, ts: Date.now() });
   });
 }
 

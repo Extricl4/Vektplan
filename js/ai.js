@@ -55,7 +55,11 @@ function parseJSON(text) {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end < start) throw new AIError(tr('The AI answer could not be read. Try again.', 'Klarte ikke lese AI-svaret. Prøv igjen.'));
-  return JSON.parse(text.slice(start, end + 1));
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch (e) {
+    throw new AIError(tr('The AI answer could not be read. Try again.', 'Klarte ikke lese AI-svaret. Prøv igjen.'));
+  }
 }
 
 export async function testKey() {

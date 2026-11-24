@@ -189,7 +189,7 @@ function stems(word) {
 }
 
 function localParse(text) {
-  const pieces = text.split(/,|;|\+|\n|\band\b|\bog\b|\bwith\b/i).map((s) => s.trim()).filter(Boolean);
+  const pieces = text.split(/,|;|\+|\n|\band\b|\bog\b|\bwith\b|\bmed\b/i).map((s) => s.trim()).filter(Boolean);
   const pool = [
     ...allFoods().map((f) => ({ type: 'food', f, name: [norm(f.n.en), norm(f.n.nb)], extra: norm(`${f.p.en} ${f.p.nb}`) })),
     ...RECIPES.map((r) => ({ type: 'recipe', r, name: [norm(r.name.en), norm(r.name.nb)], extra: '' })),
@@ -365,7 +365,8 @@ export const actions = {
     addLog(key, { slot: st.slot || null, title, baseKcal: base, portion, items, tags, fodmap: worst(items), source: st.mode, rid: single?.rid || null });
     const flagged = items.filter((i) => i.fodmap === 'high');
     st = null;
-    toast(flagged.length ? tr(`Logged. Heads up: ${flagged.map((i) => i.name).join(', ')} is high FODMAP.`, `Logget. Obs: ${flagged.map((i) => i.name).join(', ')} har mye FODMAP.`) : cheer(key), 3200);
+    const names = flagged.map((i) => i.name).join(', ');
+    toast(flagged.length ? tr(`Logged. Heads up: ${names} ${flagged.length > 1 ? 'are' : 'is'} high FODMAP.`, `Logget. Obs: ${names} har mye FODMAP.`) : cheer(key), 3200);
     nav.go('today');
   },
 };

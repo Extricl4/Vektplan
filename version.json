@@ -1,9 +1,15 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "date": "2026-11-24",
-  "notes": "The bottom bar is back on Today and stays put on every screen. Startup is shorter (no name or weight questions). New: Apple Watch sleep, pulse and movement through a Shortcut, see Settings → Apple Watch.",
-  "notes_nb": "Menylinjen nederst er tilbake på I dag og ligger fast på alle skjermer. Oppstarten er kortere (ingen spørsmål om navn eller vekt). Nytt: søvn, puls og bevegelse fra Apple Watch via en snarvei, se Innstillinger → Apple Watch.",
+  "notes": "Bug fixes: logging a weight for an earlier day no longer deletes today's, weights accept a decimal comma, the coach keeps what you're typing, switching workouts keeps your sets, and a few smaller fixes.",
+  "notes_nb": "Feilrettinger: å logge vekt for en tidligere dag sletter ikke lenger dagens, vekt godtar desimalkomma, coachen beholder det du skriver, bytte økt beholder settene dine, og noen mindre rettelser.",
   "history": [
+    {
+      "version": "1.1.0",
+      "date": "2026-11-24",
+      "notes": "The bottom bar is back on Today and stays put on every screen. Startup is shorter (no name or weight questions). New: Apple Watch sleep, pulse and movement through a Shortcut, see Settings → Apple Watch.",
+      "notes_nb": "Menylinjen nederst er tilbake på I dag og ligger fast på alle skjermer. Oppstarten er kortere (ingen spørsmål om navn eller vekt). Nytt: søvn, puls og bevegelse fra Apple Watch via en snarvei, se Innstillinger → Apple Watch."
+    },
     {
       "version": "1.0.1",
       "date": "2026-11-23",

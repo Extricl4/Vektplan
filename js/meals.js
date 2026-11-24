@@ -23,6 +23,7 @@ export function cheer(key = dayKey()) {
   const t = totals(key);
   const left = t.total - t.done;
   if (t.total && left === 0) return tr('Logged. That is every meal today. Amazing.', 'Logget. Alle dagens måltider er gjort. Sterkt.');
+  if (!t.done) return tr('Logged. Every bite counts.', 'Logget. Hver bit teller.');
   const lines = [
     tr(`Logged. ${t.done} of ${t.total} meals done.`, `Logget. ${t.done} av ${t.total} måltider gjort.`),
     tr(`Nice. ${t.done} of ${t.total} done, keep it steady.`, `Fint. ${t.done} av ${t.total} gjort, fortsett jevnt.`),
@@ -171,7 +172,7 @@ export function logRecipeSheet(key, recipe, slotId) {
     html: `<div class="row" style="gap:14px">${plate(recipe, 52)}<p class="h3 grow">${esc(L(recipe.name))}</p></div>
       <div class="field"><label for="lr-slot">${tr('Meal', 'Måltid')}</label>
       <select id="lr-slot" class="select">${slots.map((s) => `<option value="${s.id}" ${s.id === slotId ? 'selected' : ''}>${kindName(s.kind)} · ${s.time}</option>`).join('')}
-      <option value="">${tr('Extra (no meal slot)', 'Ekstra (uten måltid)')}</option></select></div>
+      <option value="" ${!slotId ? 'selected' : ''}>${tr('Extra (no meal slot)', 'Ekstra (uten måltid)')}</option></select></div>
       <p class="label">${tr('How much did you eat?', 'Hvor mye spiste du?')} <span class="muted">(${tr('1 portion', '1 porsjon')})</span></p>
       ${portionButtons(1)}`,
     actions: {

@@ -138,7 +138,8 @@ export function makeRestGentle() {
 export function nudgeNext(minutes = 30) {
   const { current } = dayStatus();
   if (!current) return null;
-  const t = Math.max(current.min, nowMinutes()) + minutes;
+  const t = Math.min(23 * 60 + 59, Math.max(current.min, nowMinutes()) + minutes);
+  if (t <= current.min) return null;
   mutate(() => {
     const d = day();
     d.moved ||= {};
@@ -184,6 +185,7 @@ export function bestSlotFor(date = new Date()) {
   if (!slots.length) return null;
   const { current } = dayStatus();
   if (current && current.state !== 'next') return current.slot.id;
+  if (!current) return null; // every meal today is done or skipped: this one is an extra
   const now = nowMinutes(date);
   let best = slots[0];
   for (const s of slots) if (Math.abs(toMinutes(s.time) - now) < Math.abs(toMinutes(best.time) - now)) best = s;

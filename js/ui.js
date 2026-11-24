@@ -240,9 +240,13 @@ export function closeSheet(immediate = false) {
   const st = sheetState;
   sheetState = null;
   document.body.style.overflow = '';
+  const closing = layer.querySelector('.sheet');
   const done = () => {
-    layer.innerHTML = '';
-    layer.onclick = layer.oninput = layer.onchange = null;
+    // Another sheet may have opened during the closing animation: leave that one alone.
+    if (layer.querySelector('.sheet') === closing) {
+      layer.innerHTML = '';
+      layer.onclick = layer.oninput = layer.onchange = null;
+    }
     st?.onClose?.();
   };
   if (immediate) return done();

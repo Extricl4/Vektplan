@@ -158,6 +158,9 @@ function watchBody() {
     </section>`;
 }
 
+// Weight inputs are text with a decimal keypad: iOS number fields can drop a decimal comma.
+const kgText = (kg) => (kg == null || kg === '' ? '' : S().prefs.lang === 'nb' ? String(kg).replace('.', ',') : String(kg));
+
 function bmiOf(kg, cm) {
   if (!kg || !cm) return null;
   return kg / ((cm / 100) ** 2);
@@ -186,7 +189,7 @@ function bodyTab() {
     <section class="card" aria-label="${tr('BMI calculator', 'BMI-kalkulator')}">
       <h2 class="h2">${tr('BMI calculator', 'BMI-kalkulator')}</h2>
       <div class="grid2"><div class="field"><label for="b-h">${tr('Height (cm)', 'Høyde (cm)')}</label><input id="b-h" class="input filled" type="number" inputmode="numeric" value="${height ?? ''}" data-change="height"></div>
-        <div class="field"><label for="b-w">${tr('Weight (kg)', 'Vekt (kg)')}</label><input id="b-w" class="input filled" type="number" inputmode="decimal" step="0.1" value="${w?.kg ?? ''}" data-input="bmiW"></div></div>
+        <div class="field"><label for="b-w">${tr('Weight (kg)', 'Vekt (kg)')}</label><input id="b-w" class="input filled" type="text" inputmode="decimal" autocomplete="off" value="${kgText(w?.kg)}" data-input="bmiW"></div></div>
       <div class="row" style="gap:8px;align-items:baseline"><span class="small muted">${tr('BMI', 'BMI')}</span><span id="bmi-v" class="num" style="font-size:30px;font-weight:700">${bmi ? n1(bmi) : '–'}</span></div>
       <div class="bmi-scale" aria-hidden="true"><div class="bars"><span class="under" style="width:17.5%"></span><span class="ok" style="width:32.5%"></span><span style="width:25%"></span><span style="width:25%"></span></div>
         <span id="bmi-m" class="marker" style="left:${pos ?? 0}%;${pos == null ? 'display:none' : ''}"></span>
@@ -216,22 +219,24 @@ function keyFrom(ctx) {
   return tab === 'journal' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '') ? arg : dayKey();
 }
 
-function weightSheet(date = dayKey(), kg = latestWeight()?.kg) {
+// edit = true when opened from the list: then changing the date moves that weigh-in.
+// Logging a new one never removes another day's weigh-in.
+function weightSheet(date = dayKey(), kg = latestWeight()?.kg, edit = false) {
   const existing = S().weights.find((w) => w.date === date);
   openSheet({
-    title: existing ? tr('Edit weigh-in', 'Endre veiing') : tr('Log weight', 'Logg vekt'),
+    title: edit ? tr('Edit weigh-in', 'Endre veiing') : tr('Log weight', 'Logg vekt'),
     html: `<div class="field"><label for="w-kg">${tr('Weight (kg)', 'Vekt (kg)')}</label>
-      <input id="w-kg" class="input" type="number" inputmode="decimal" step="0.1" min="30" max="250" value="${existing?.kg ?? kg ?? ''}"></div>
+      <input id="w-kg" class="input" type="text" inputmode="decimal" autocomplete="off" value="${kgText(existing?.kg ?? kg)}"></div>
       <div class="field"><label for="w-date">${tr('Date', 'Dato')}</label><input id="w-date" class="input" type="date" value="${date}" max="${dayKey()}"></div>
       <p class="tiny muted">${tr('Tip: weigh yourself in the morning, before breakfast. Day-to-day changes are mostly water, so look at the trend.', 'Tips: vei deg om morgenen før frokost. Endringer fra dag til dag er mest vann, så se på utviklingen.')}</p>
       <button class="btn primary" data-act="save">${tr('Save', 'Lagre')}</button>
-      ${existing ? `<button class="btn danger" data-act="del">${icon('trash', 18)} ${tr('Delete', 'Slett')}</button>` : ''}`,
+      ${edit && existing ? `<button class="btn danger" data-act="del">${icon('trash', 18)} ${tr('Delete', 'Slett')}</button>` : ''}`,
     actions: {
       save: (el, e, sheet) => {
         const v = parseFloat(String(sheet.querySelector('#w-kg').value).replace(',', '.'));
         const dt = sheet.querySelector('#w-date').value || dayKey();
         if (!(v > 25 && v < 300)) { toast(tr('That weight looks off. Try again.', 'Den vekten ser feil ut. Prøv igjen.')); return; }
-        if (dt !== date) mutate((s) => { s.weights = s.weights.filter((w) => w.date !== date); });
+        if (edit && dt !== date) mutate((s) => { s.weights = s.weights.filter((w) => w.date !== date); });
         addWeight(v, dt);
         closeSheet();
         toast(tr('Weight saved.', 'Vekt lagret.'));
@@ -284,7 +289,7 @@ export const actions = {
   },
   range: (el) => { range = el.dataset.r; nav.rerender(); },
   addW: () => weightSheet(),
-  editW: (el) => weightSheet(el.dataset.date),
+  editW: (el) => weightSheet(el.dataset.date, undefined, true),
   height: (el) => {
     const v = Math.round(Number(el.value));
     mutate((s) => { s.profile.heightCm = v > 80 && v < 260 ? v : null; });

@@ -11,10 +11,32 @@ let rest = null; // { until, total }
 let countdown = null; // { until, total }
 const lastValue = {};
 
+// Minutes for a strength session. If it was left open (phone locked, forgot to finish),
+// count about 3 minutes per set instead of the hours since it started.
+function sessionMinutes(a) {
+  const sets = Object.values(a.sets).reduce((n, arr) => n + arr.length, 0);
+  const elapsed = (Date.now() - a.started) / 60000;
+  return elapsed > 120 ? Math.max(5, Math.min(90, sets * 3)) : elapsed;
+}
+
+function walkMinutes(a) {
+  const m = walkElapsed(a) / 60000;
+  return m > 300 ? 60 : m;
+}
+
 export function enter(ctx) {
   const id = ctx.params[0];
   if (!WORKOUTS[id]) return;
   const a = S().activeWorkout;
+  if (a && a.id !== id) {
+    // Starting something else: keep what was already done in the other session.
+    const sets = Object.values(a.sets || {}).reduce((n, arr) => n + arr.length, 0);
+    if (a.id === 'walk' ? walkElapsed(a) >= 60000 : sets > 0) {
+      if (a.id === 'walk') saveWorkout('walk', Math.max(1, walkMinutes(a)));
+      else saveWorkout(a.id, sessionMinutes(a), sets);
+      toast(tr(`Saved your ${activityName(a.id)} first.`, `Lagret ${activityName(a.id)} først.`), 2600);
+    }
+  }
   if (!a || a.id !== id) {
     mutate((s) => { s.activeWorkout = { id, started: Date.now(), ex: 0, sets: {}, walkStart: null, walkMs: 0 }; });
   }
@@ -169,11 +191,10 @@ function finish() {
   const a = S().activeWorkout;
   if (!a) return;
   if (a.id === 'walk') {
-    const mins = walkElapsed(a) / 60000;
-    saveWorkout('walk', Math.max(1, mins));
+    saveWorkout('walk', Math.max(1, walkMinutes(a)));
   } else {
     const sets = Object.values(a.sets).reduce((n, arr) => n + arr.length, 0);
-    saveWorkout(a.id, (Date.now() - a.started) / 60000, sets);
+    saveWorkout(a.id, sessionMinutes(a), sets);
   }
   mutate((s) => { s.activeWorkout = null; });
   rest = null;

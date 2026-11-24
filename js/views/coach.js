@@ -8,6 +8,8 @@ import { esc, dayKey, hash } from '../util.js';
 import { nav } from '../nav.js';
 
 let busy = false;
+let draft = ''; // what's in the message box, kept across re-renders
+let typing = false;
 
 const CHIPS = () => [
   ['nausea', tr('I feel nauseous', 'Jeg er kvalm')],
@@ -152,7 +154,7 @@ export function render() {
     <div class="chips scroll" style="padding-top:4px">${CHIPS().map(([id, label]) => `<button class="chip" data-act="chip" data-intent="${id}">${label}</button>`).join('')}</div>
     <div class="composer">
       <label class="sr-only" for="chat-in">${tr('Message the coach', 'Skriv til coachen')}</label>
-      <textarea id="chat-in" class="textarea" rows="1" placeholder="${tr('Message the coach', 'Skriv til coachen')}" data-input="grow"></textarea>
+      <textarea id="chat-in" class="textarea" rows="1" placeholder="${tr('Message the coach', 'Skriv til coachen')}" data-input="grow">${esc(draft)}</textarea>
       <button class="icon-btn" style="width:48px;height:48px;background:var(--accent-fill);color:var(--accent-ink)" data-act="send" aria-label="${tr('Send', 'Send')}">${icon('send', 20)}</button>
     </div>
   </div>`;
@@ -161,6 +163,16 @@ export function render() {
 export function mount() {
   requestAnimationFrame(() => nav.scrollTo('end'));
   const input = document.getElementById('chat-in');
+  if (input && draft) {
+    input.style.height = 'auto';
+    input.style.height = Math.min(140, input.scrollHeight) + 'px';
+  }
+  if (input && typing) {
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  input?.addEventListener('focus', () => { typing = true; });
+  input?.addEventListener('blur', () => { setTimeout(() => { if (document.activeElement?.id !== 'chat-in') typing = false; }, 0); });
   input?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
@@ -200,10 +212,12 @@ export const actions = {
     const el = document.getElementById('chat-in');
     const text = el?.value || '';
     if (el) el.value = '';
+    draft = '';
     send(text);
   },
   chip: (el) => send(el.textContent, el.dataset.intent),
   grow: (el) => {
+    draft = el.value;
     el.style.height = 'auto';
     el.style.height = Math.min(140, el.scrollHeight) + 'px';
   },

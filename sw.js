@@ -1,7 +1,7 @@
 /* Vektplan service worker.
    Keeps the app working offline and controls updates.
    VERSION and ASSETS are rewritten by tools/bump.py — don't edit them by hand. */
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const CACHE = 'vektplan-' + VERSION;
 const ASSETS = [
   './',
@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
 
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match('./index.html').then((cached) => cached || fetch(req))
+      caches.open(CACHE).then((cache) => cache.match('./index.html')).then((cached) => cached || fetch(req))
     );
     return;
   }
