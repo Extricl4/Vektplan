@@ -2,9 +2,10 @@ import { S, peekDay, day, mutate, hasJournal, addWeight, latestWeight } from '..
 import { analyze, patternText, symptomLabel, diarySummary } from '../patterns.js';
 import { hasAI, deepPatterns } from '../ai.js';
 import { tr, n1, longDate, shortDate, dayShort } from '../i18n.js';
-import { icon, tabbar, weightChart, openSheet, closeSheet, toast } from '../ui.js';
+import { icon, tabbar, weightChart, openSheet, closeSheet, toast, sparkline } from '../ui.js';
 import { esc, dayKey, addDays, parseKey, debounce, clock } from '../util.js';
 import { nav } from '../nav.js';
+import { hasHealth, healthDay, fmtSleep } from '../health.js';
 
 const SYMPTOMS = ['nausea', 'bloating', 'pain', 'gas', 'diarrhea', 'constipation', 'reflux', 'low_energy', 'anxiety', 'good'];
 const LEVELS = [
@@ -124,6 +125,39 @@ function patternsTab() {
     </section>`;
 }
 
+// Sleep and resting pulse from the Apple Watch, if connected.
+function watchBody() {
+  if (!hasHealth()) {
+    return `<a class="card tight link" href="#/health" style="flex-direction:row;align-items:center;gap:12px">
+      <span class="icon-btn" style="background:var(--accent-soft);color:var(--accent)">${icon('watch', 20)}</span>
+      <span class="grow"><span style="display:block;font-weight:600">${tr('Add sleep and pulse from your Apple Watch', 'Legg til søvn og puls fra Apple Watch')}</span>
+      <span class="small muted">${tr('See how sleep and your stomach go together', 'Se hvordan søvn og magen henger sammen')}</span></span>${icon('chevR', 18)}</a>`;
+  }
+  const today = dayKey();
+  const nights = Array.from({ length: 14 }, (_, i) => {
+    const k = addDays(today, i - 13);
+    return { k, min: healthDay(k)?.sleepMin ?? null };
+  });
+  const vals = nights.filter((n) => n.min != null).map((n) => n.min);
+  const max = Math.max(540, ...vals);
+  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  const rhr = [];
+  for (let i = 29; i >= 0; i--) {
+    const k = addDays(today, -i);
+    const v = healthDay(k)?.restingHR;
+    if (v) rhr.push({ date: k, kg: v });
+  }
+  return `<section class="card" aria-label="${tr('Sleep and pulse', 'Søvn og puls')}">
+      <div class="row between top"><div><span class="small muted">${tr('Sleep, last 2 weeks', 'Søvn, siste 2 uker')}</span>
+        <p class="num" style="font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1.15">${avg != null ? fmtSleep(avg) : '–'}</p>
+        <span class="small muted">${tr('average per night', 'i snitt per natt')}</span></div>
+        <a class="btn small secondary" href="#/health">${icon('watch', 16)} ${tr('Details', 'Detaljer')}</a></div>
+      <div class="sleepbars" aria-hidden="true">${nights.map((n) => `<div class="bar"><i class="${n.min == null ? 'empty' : ''}" style="height:${n.min == null ? 4 : Math.max(6, Math.round((n.min / max) * 100))}%"></i><span>${parseKey(n.k).getDate()}</span></div>`).join('')}</div>
+      ${rhr.length >= 2 ? `<div class="col" style="gap:4px"><div class="row between"><span class="small muted">${tr('Resting pulse, last 30 days', 'Hvilepuls, siste 30 dager')}</span><span class="small num" style="font-weight:600">${rhr[rhr.length - 1].kg} ${tr('beats/min', 'slag/min')}</span></div>${sparkline(rhr, 300, 36)}</div>` : ''}
+      <p class="tiny muted" style="line-height:1.5">${tr('Better sleep often means a calmer stomach and more appetite. The Patterns tab checks this against your journal.', 'Bedre søvn gir ofte roligere mage og mer matlyst. Mønstre-fanen sjekker dette mot dagboka di.')}</p>
+    </section>`;
+}
+
 function bmiOf(kg, cm) {
   if (!kg || !cm) return null;
   return kg / ((cm / 100) ** 2);
@@ -148,6 +182,7 @@ function bodyTab() {
       ${all.length ? `<div class="seg" style="grid-auto-columns:minmax(0,1fr)">${[['1m', tr('1 month', '1 mnd')], ['3m', tr('3 months', '3 mnd')], ['all', tr('All', 'Alt')]].map(([id, l]) => `<button aria-pressed="${range === id}" data-act="range" data-r="${id}">${l}</button>`).join('')}</div>
         ${pts.length ? weightChart(pts, { label: tr('Weight over time', 'Vekt over tid') }) : `<p class="small muted">${tr('No weigh-ins in this period.', 'Ingen veiinger i denne perioden.')}</p>`}` : ''}
     </section>
+    ${watchBody()}
     <section class="card" aria-label="${tr('BMI calculator', 'BMI-kalkulator')}">
       <h2 class="h2">${tr('BMI calculator', 'BMI-kalkulator')}</h2>
       <div class="grid2"><div class="field"><label for="b-h">${tr('Height (cm)', 'Høyde (cm)')}</label><input id="b-h" class="input filled" type="number" inputmode="numeric" value="${height ?? ''}" data-change="height"></div>

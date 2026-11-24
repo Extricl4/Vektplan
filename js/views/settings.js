@@ -7,6 +7,8 @@ import { update, checkForUpdate, applyUpdate, forceRefresh, onUpdate } from '../
 import { esc, dayKey, addDays, download, openCalendarFile, isStandalone, isIOS, pad } from '../util.js';
 import { applyTheme } from '../theme.js';
 import { nav } from '../nav.js';
+import { hasHealth, lastSync } from '../health.js';
+import { syncHealth } from './health.js';
 
 let showKey = false;
 let testing = false;
@@ -61,6 +63,13 @@ export function render() {
       ${row(`<label for="s-height">${tr('Height', 'Høyde')}</label>`, '', `<div class="row" style="gap:6px"><input id="s-height" class="input" style="width:90px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" value="${p.heightCm ?? ''}" data-change="height"><span class="muted small">cm</span></div>`)}
       ${row(`<label for="s-goal">${tr('Daily calorie goal', 'Daglig kalorimål')}</label>`, tr('Optional. Leave empty to track meals instead. Best set together with your doctor or a dietitian.', 'Valgfritt. La det stå tomt for å følge måltider i stedet. Best å sette sammen med legen eller en ernæringsfysiolog.'), `<div class="row" style="gap:6px"><input id="s-goal" class="input" style="width:96px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" placeholder="–" value="${p.goalKcal ?? ''}" data-change="goal"><span class="muted small">kcal</span></div>`)}
       ${row(tr('Calm mode', 'Rolig modus'), tr('Hides calorie numbers. Shows meals done instead.', 'Skjuler kalorier. Viser måltider i stedet.'), toggle('s-calm', st.prefs.calm, 'calm'))}
+    </div>
+
+    <p class="set-label">Apple Watch</p>
+    <div class="set-group">
+      <a class="set-row" href="#/health">${icon('watch', 20)}<div class="grow"><div>${hasHealth() ? tr('Watch data', 'Watch-data') : tr('Connect Apple Watch', 'Koble til Apple Watch')}</div>
+        <div class="s">${hasHealth() ? tr(`Sleep, pulse and movement · last synced ${new Date(lastSync()).toLocaleString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`, `Søvn, puls og bevegelse · sist hentet ${new Date(lastSync()).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`) : tr('Sleep, resting pulse, active calories, steps and exercise, through a Shortcut', 'Søvn, hvilepuls, aktive kalorier, skritt og trening, via en snarvei')}</div></div>${icon('chevR', 18)}</a>
+      ${hasHealth() ? `<button class="set-row" data-act="syncHealth" style="color:var(--accent)">${icon('refresh', 18)} <span class="grow">${tr('Sync now', 'Hent nå')}</span></button>` : ''}
     </div>
 
     <p class="set-label">${tr('Meal times', 'Måltider')}</p>
@@ -141,6 +150,7 @@ function icsFile() {
 }
 
 export const actions = {
+  syncHealth: () => syncHealth(),
   back: () => nav.back('today'),
   check: () => checkForUpdate(false),
   doUpdate: () => applyUpdate(),

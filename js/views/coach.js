@@ -137,8 +137,8 @@ function greeting() {
 export function render() {
   const chat = S().chat;
   const ai = hasAI();
-  return `<div class="screen no-tabs" style="padding-bottom:0;gap:10px">
-    <header class="head" style="position:sticky;top:0;z-index:5;background:var(--bg);margin:calc(-1 * (env(safe-area-inset-top) + 18px)) -18px 0;padding:calc(env(safe-area-inset-top) + 14px) 18px 12px;border-bottom:1px solid var(--line)">
+  return `<div class="screen no-tabs" style="padding-top:0;padding-bottom:0;gap:10px">
+    <header class="head" style="position:sticky;top:0;z-index:5;background:var(--bg);margin:0 -18px;padding:calc(env(safe-area-inset-top) + 14px) 18px 12px;border-bottom:1px solid var(--line)">
       <button class="icon-btn surface" data-act="back" aria-label="${tr('Back', 'Tilbake')}">${icon('chevL', 20)}</button>
       <span class="icon-btn" style="background:var(--accent-soft);color:var(--accent-line)">${icon('sparkle', 20)}</span>
       <div class="grow"><h1 class="h2">${tr('Coach', 'Coach')}</h1><p class="tiny muted">${ai ? tr('AI coach · knows your plan and journal', 'AI-coach · kjenner planen og dagboka') : tr('Quick help · add an AI key for free chat', 'Rask hjelp · legg inn AI-nøkkel for fri chat')}</p></div>
@@ -159,7 +159,7 @@ export function render() {
 }
 
 export function mount() {
-  requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+  requestAnimationFrame(() => nav.scrollTo('end'));
   const input = document.getElementById('chat-in');
   input?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {

@@ -1,6 +1,7 @@
 // Optional AI features, using the user's own Claude API key (stored only on this phone).
 // Calls go straight from the phone to api.anthropic.com.
 import { S, peekDay } from './store.js';
+import { healthContext } from './health.js';
 import { dayStatus, totals, plannedActivity, workoutsOn } from './planner.js';
 import { getLang, tr } from './i18n.js';
 import { dayKey, addDays, clock } from './util.js';
@@ -128,6 +129,8 @@ export function contextText() {
   }
   const act = plannedActivity(key);
   lines.push(`Training today: planned ${act}; ${workoutsOn(key).length ? 'done' : 'not done yet'}.`);
+  const watch = healthContext(key);
+  if (watch) lines.push(st.prefs.calm ? watch.replace(/, active energy \d+ kcal/g, '') : watch);
   return lines.join('\n');
 }
 

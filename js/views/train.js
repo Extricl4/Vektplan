@@ -1,10 +1,12 @@
 import { S, mutate } from '../store.js';
 import { plannedActivity, workoutsOn, programWeek, weekSummary } from '../planner.js';
 import { WORKOUTS, EXERCISES, OTHER_ACTIVITIES } from '../data/workouts.js';
-import { tr, L, dayShort, shortDate } from '../i18n.js';
+import { tr, L, dayShort, shortDate, n0 } from '../i18n.js';
 import { icon, tabbar, openSheet, closeSheet, toast } from '../ui.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey, uid } from '../util.js';
 import { nav } from '../nav.js';
+import { hasHealth, healthDay, fmtSleep, syncedToday } from '../health.js';
+import { syncHealth } from './health.js';
 
 const ACT_ICON = { strengthA: 'dumbbell', strengthB: 'dumbbell', stretch: 'stretch', walk: 'walk', rest: 'bed' };
 
@@ -57,6 +59,32 @@ function todayCard() {
     <div class="btns"><a class="btn primary" href="#/workout/${act}">${icon('play', 18)} ${tr('Start', 'Start')}</a>
       ${act !== 'walk' ? `<a class="btn secondary" href="#/workout/walk">${tr('Walk instead', 'Gå i stedet')}</a>` : `<button class="btn secondary" data-act="quickWalk">${tr('Log a walk', 'Logg en gåtur')}</button>`}</div>
     <p class="small muted" style="line-height:1.5">${tr('Stomach rough today? A walk or a stretch still counts toward your week.', 'Dårlig mage i dag? En gåtur eller litt tøying teller også.')}</p>
+  </section>`;
+}
+
+// What the Apple Watch saw today, or a gentle way in if it isn't connected yet.
+function watchCard() {
+  if (!hasHealth()) {
+    return `<a class="card tight link" href="#/health" style="flex-direction:row;align-items:center;gap:12px">
+      <span class="icon-btn" style="background:var(--accent-soft);color:var(--accent)">${icon('watch', 20)}</span>
+      <span class="grow"><span style="display:block;font-weight:600">${tr('Connect your Apple Watch', 'Koble til Apple Watch')}</span>
+      <span class="small muted">${tr('See exercise minutes, active calories, steps and sleep here', 'Se treningsminutter, aktive kalorier, skritt og søvn her')}</span></span>${icon('chevR', 18)}</a>`;
+  }
+  const calm = S().prefs.calm;
+  const key = dayKey();
+  const h = healthDay(key) || {};
+  const act = plannedActivity(key);
+  const tired = h.sleepMin != null && h.sleepMin < 360 && !h.sleepGuess && /^strength/.test(act) && !workoutsOn(key).length;
+  const bits = [
+    h.exerciseMin != null ? `<b class="num">${h.exerciseMin}</b> ${tr('exercise min', 'treningsmin')}` : '',
+    !calm && h.activeKcal != null ? `<b class="num">${n0(h.activeKcal)}</b> kcal` : '',
+    h.steps != null ? `<b class="num">${n0(h.steps)}</b> ${tr('steps', 'skritt')}` : '',
+  ].filter(Boolean);
+  return `<section class="card tight">
+    <div class="row between"><h2 class="h3 row" style="gap:8px">${icon('watch', 19)} ${tr('Watch today', 'Klokka i dag')}</h2>
+      <button class="link-btn row" style="gap:5px" data-act="syncHealth">${icon('refresh', 16)} ${tr('Sync', 'Hent')}</button></div>
+    <p class="small">${bits.length ? bits.join(' · ') : `<span class="muted">${syncedToday() ? tr('Nothing recorded yet today.', 'Ingenting registrert ennå i dag.') : tr('Not synced today yet.', 'Ikke hentet i dag ennå.')}</span>`}</p>
+    ${tired ? `<div class="note amber">${icon('bed', 18)}<span>${tr(`Short night (${fmtSleep(h.sleepMin)}). If you feel tired, a walk or a stretch today counts just as much.`, `Kort natt (${fmtSleep(h.sleepMin)}). Er du sliten, teller en gåtur eller tøying like mye i dag.`)}</span></div>` : ''}
   </section>`;
 }
 
@@ -121,12 +149,14 @@ export function render() {
     ${active ? `<a class="banner" href="#/workout/${active.id}" style="text-decoration:none">${icon('play', 20)}<span class="grow">${tr('Workout in progress', 'Økt pågår')}: ${esc(activityName(active.id))}. ${tr('Tap to continue.', 'Trykk for å fortsette.')}</span></a>` : ''}
     ${weekStrip()}
     ${todayCard()}
+    ${watchCard()}
     ${others()}
     ${history()}
   </div>${tabbar('train')}`;
 }
 
 export const actions = {
+  syncHealth: () => syncHealth(),
   quickWalk: () => minutesSheet(tr('Log a walk', 'Logg en gåtur'), (m) => { saveWorkout('walk', m); toast(tr('Walk logged. Nice.', 'Gåtur logget. Fint.')); nav.rerender(); })(false),
   other: () => minutesSheet(tr('Log an activity', 'Logg en aktivitet'), (m, a) => { saveWorkout(a, m); toast(tr('Activity logged.', 'Aktivitet logget.')); nav.rerender(); }, 30)(true),
   editW: (el) => {

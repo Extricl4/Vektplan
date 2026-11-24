@@ -3,9 +3,10 @@ import { peekDay, hasJournal, activeSlots } from './store.js';
 import { workoutsOn } from './planner.js';
 import { tr } from './i18n.js';
 import { dayKey, addDays, clock } from './util.js';
+import { healthDay } from './health.js';
 
-const TRIGGERS = ['wheat', 'lactose', 'garlic_onion', 'fructose', 'polyol', 'gos', 'fatty', 'spicy', 'caffeine', 'fizzy', 'few_meals', 'late_meal', 'high_fodmap'];
-const HELPS = ['breakfast_early', 'meals5', 'workout'];
+const TRIGGERS = ['wheat', 'lactose', 'garlic_onion', 'fructose', 'polyol', 'gos', 'fatty', 'spicy', 'caffeine', 'fizzy', 'few_meals', 'late_meal', 'high_fodmap', 'short_sleep'];
+const HELPS = ['breakfast_early', 'meals5', 'workout', 'good_sleep', 'active_day'];
 const SYMPTOMS = ['nausea', 'bloating', 'pain', 'gas', 'diarrhea', 'reflux', 'low_energy'];
 
 export function featureLabel(f) {
@@ -26,6 +27,9 @@ export function featureLabel(f) {
     breakfast_early: tr('breakfast before 10:00', 'frokost før kl. 10'),
     meals5: tr('5 or more meals', '5 eller flere måltider'),
     workout: tr('a workout', 'en treningsøkt'),
+    short_sleep: tr('under 6 hours of sleep the night before', 'under 6 timer søvn natten før'),
+    good_sleep: tr('7½ hours of sleep or more', '7½ time søvn eller mer'),
+    active_day: tr('30+ active minutes on the Watch', '30+ aktive minutter på klokka'),
   }[f] || f;
 }
 
@@ -59,6 +63,12 @@ function features(key) {
   if (slotsDone >= 5) f.add('meals5');
   if (d.logs.length < 3) f.add('few_meals');
   if (workoutsOn(key).length) f.add('workout');
+  const h = healthDay(key);
+  if (h?.sleepMin != null && !h.sleepGuess) {
+    if (h.sleepMin < 360) f.add('short_sleep');
+    if (h.sleepMin >= 450) f.add('good_sleep');
+  }
+  if ((h?.exerciseMin || 0) >= 30) f.add('active_day');
   return f;
 }
 
@@ -148,7 +158,9 @@ export function diarySummary(range = 30) {
     const j = d.journal || {};
     const lv = Object.entries(j.levels || {}).map(([a, b]) => `${a} ${b}/5`).join(', ');
     const st = (d.stomach || []).map((c) => `${clock(c.ts)} ${c.level}`).join(', ');
-    lines.push(`${k} | ate: ${foods || 'nothing logged'} | symptoms: ${(j.symptoms || []).join(', ') || 'none'}${lv ? ` | levels: ${lv}` : ''}${st ? ` | stomach check-ins: ${st}` : ''}${j.note ? ` | note: ${j.note.slice(0, 200)}` : ''}`);
+    const h = healthDay(k);
+    const watch = h ? [h.sleepMin != null ? `sleep night before ${Math.floor(h.sleepMin / 60)}h${String(Math.round(h.sleepMin % 60)).padStart(2, '0')}` : '', h.restingHR ? `resting HR ${h.restingHR}` : '', h.exerciseMin != null ? `exercise ${h.exerciseMin} min` : ''].filter(Boolean).join(', ') : '';
+    lines.push(`${k} | ate: ${foods || 'nothing logged'} | symptoms: ${(j.symptoms || []).join(', ') || 'none'}${lv ? ` | levels: ${lv}` : ''}${st ? ` | stomach check-ins: ${st}` : ''}${watch ? ` | watch: ${watch}` : ''}${j.note ? ` | note: ${j.note.slice(0, 200)}` : ''}`);
   }
   return lines.join('\n');
 }

@@ -1,7 +1,7 @@
 import { S, peekDay, day, mutate, latestWeight } from '../store.js';
 import { dayStatus, totals, streak, plannedActivity, workoutsOn, makeRestGentle } from '../planner.js';
 import { tr, L, n0, n1, greeting, longDate, minutesLeft, kindName } from '../i18n.js';
-import { icon, ring, mealsBar, fodmapBadge, sparkline, plate, toast, sheetOpen } from '../ui.js';
+import { icon, ring, mealsBar, fodmapBadge, sparkline, plate, toast, sheetOpen, tabbar } from '../ui.js';
 import { atePlannedSheet, smallerSheet, skipCurrent, editLogSheet, recipeShort } from '../meals.js';
 import { WORDS } from '../data/words.js';
 import { WORKOUTS } from '../data/workouts.js';
@@ -9,6 +9,8 @@ import { esc, dayKey, nowMinutes, clock, dayNum, isIOS, isStandalone } from '../
 import { nav } from '../nav.js';
 import { update, applyUpdate } from '../updates.js';
 import { getLang } from '../i18n.js';
+import { hasHealth, healthDay, fmtSleepCompact, sleepWindow, latestRestingHR, syncedToday, lastSync } from '../health.js';
+import { syncHealth } from './health.js';
 
 const LEVELS = [
   ['good', () => tr('Good', 'Bra')],
@@ -115,6 +117,37 @@ function tiles() {
   return `<div class="grid2">${weightTile}${trainTile}</div>`;
 }
 
+// Sleep, pulse and movement from the Apple Watch (via the Shortcut). Only shown once connected.
+function watchCard() {
+  if (!hasHealth() && !S().health?.setup) return '';
+  const calm = S().prefs.calm;
+  const h = healthDay(dayKey()) || {};
+  const rhr = latestRestingHR();
+  const stale = !syncedToday();
+  const moved = calm
+    ? (h.exerciseMin != null ? `${h.exerciseMin} min` : '–')
+    : (h.activeKcal != null ? `${n0(h.activeKcal)} kcal` : '–');
+  let note = '';
+  if (h.sleepMin != null && h.sleepMin < 360 && !h.sleepGuess) {
+    note = `<div class="note amber">${icon('bed', 18)}<span>${tr('Short night. Go easy on yourself today: small, gentle meals, and a walk or a stretch counts as training if you feel tired.', 'Kort natt. Vær snill med deg selv i dag: små, milde måltider, og en gåtur eller tøying teller som trening hvis du er sliten.')}</span></div>`;
+  } else if ((h.activeKcal || 0) >= 500 || (h.exerciseMin || 0) >= 45) {
+    note = `<div class="note">${icon('flame', 18)}<span>${calm
+      ? tr('You have been really active today. An extra snack helps your body keep up.', 'Du har vært skikkelig aktiv i dag. Et ekstra mellommåltid hjelper kroppen å henge med.')
+      : tr(`You have moved a lot today (${n0(h.activeKcal || 0)} kcal). Your body needs a little extra to keep gaining, so an extra snack is a great idea.`, `Du har beveget deg mye i dag (${n0(h.activeKcal || 0)} kcal). Kroppen trenger litt ekstra for å fortsette å gå opp, så et ekstra mellommåltid er en god idé.`)}</span></div>`;
+  }
+  return `<section class="card tight" aria-label="Apple Watch">
+    <div class="row between"><h2 class="h3 row" style="gap:8px">${icon('watch', 19)} ${tr('From your Watch', 'Fra klokka')}</h2>
+      <button class="link-btn row" style="gap:5px" data-act="syncHealth">${icon('refresh', 16)} ${tr('Sync', 'Hent')}</button></div>
+    <div class="wstats">
+      <a class="wstat" href="#/health" style="text-decoration:none;color:inherit"><span class="tiny muted">${tr('Last night', 'I natt')}</span><span class="v num">${h.sleepMin != null ? fmtSleepCompact(h.sleepMin) : '–'}</span><span class="tiny muted num">${esc(sleepWindow(h)) || '&nbsp;'}</span></a>
+      <a class="wstat" href="#/health" style="text-decoration:none;color:inherit"><span class="tiny muted">${tr('Resting pulse', 'Hvilepuls')}</span><span class="v num">${rhr ? rhr.bpm : '–'}</span><span class="tiny muted">${rhr ? tr('beats/min', 'slag/min') : '&nbsp;'}</span></a>
+      <a class="wstat" href="#/health" style="text-decoration:none;color:inherit"><span class="tiny muted">${calm ? tr('Active today', 'Aktiv i dag') : tr('Moved today', 'Bevegelse i dag')}</span><span class="v num">${moved}</span><span class="tiny muted num">${h.steps != null ? `${n0(h.steps)} ${tr('steps', 'skritt')}` : '&nbsp;'}</span></a>
+    </div>
+    ${stale ? `<p class="tiny muted">${lastSync() ? tr('Not synced today yet. Run the Vektplan Health shortcut, then tap Sync.', 'Ikke hentet i dag ennå. Kjør snarveien Vektplan Health, og trykk så Hent.') : tr('Run the Vektplan Health shortcut, then tap Sync.', 'Kjør snarveien Vektplan Health, og trykk så Hent.')}</p>` : ''}
+    ${note}
+  </section>`;
+}
+
 function stomachCard(d) {
   const last = latestStomach(d);
   return `<section class="card tight" aria-label="${tr('Stomach check-in', 'Magesjekk')}">
@@ -191,10 +224,11 @@ export function render() {
     ${gentleNote(d, current)}
     ${eatNowCard(current, list)}
     ${tiles()}
+    ${watchCard()}
     ${stomachCard(d)}
     ${eatenList(d)}
     ${wordsCard()}
-  </div>`;
+  </div>${tabbar('today')}`;
 }
 
 let timer = null;
@@ -250,4 +284,5 @@ export const actions = {
     nav.rerender();
   },
   update: () => applyUpdate(),
+  syncHealth: () => syncHealth(),
 };

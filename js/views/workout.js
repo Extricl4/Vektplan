@@ -211,7 +211,7 @@ export const actions = {
     countdown = null;
     mutate((s) => { s.activeWorkout.ex = Math.min(WORKOUTS[s.activeWorkout.id].ex.length - 1, s.activeWorkout.ex + 1); });
     nav.rerender();
-    window.scrollTo(0, 0);
+    nav.scrollTo(0);
   },
   prev: () => {
     rest = null;

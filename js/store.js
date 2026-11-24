@@ -18,7 +18,7 @@ function defaults() {
   return {
     schema: SCHEMA,
     created: dayKey(),
-    profile: { name: '', heightCm: null, goalKcal: null, onboarded: false },
+    profile: { name: 'Emil', heightCm: 194, goalKcal: null, onboarded: false },
     prefs: { lang: 'en', theme: 'light', calm: false, restSec: 60 },
     slots: DEFAULT_SLOTS.map((s) => ({ ...s })),
     ai: { key: '', model: 'claude-sonnet-5-5' },
@@ -31,6 +31,7 @@ function defaults() {
     custom: [],
     shopping: { checked: {} },
     wordOffset: 0,
+    health: { days: {}, lastSync: null }, // Apple Watch numbers per day, from the Shortcut (js/health.js)
   };
 }
 
@@ -55,6 +56,9 @@ function migrate(saved) {
   const s = merge(defaults(), saved);
   if (!Array.isArray(s.slots) || !s.slots.length) s.slots = DEFAULT_SLOTS.map((x) => ({ ...x }));
   for (const d of DEFAULT_SLOTS) if (!s.slots.find((x) => x.id === d.id)) s.slots.push({ ...d, on: false });
+  // Personal app: it's always Emil (194 cm). Fill these in if an older setup left them empty.
+  if (!String(s.profile.name || '').trim()) s.profile.name = 'Emil';
+  if (!s.profile.heightCm) s.profile.heightCm = 194;
   s.schema = SCHEMA;
   return s;
 }

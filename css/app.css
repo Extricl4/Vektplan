@@ -81,7 +81,10 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
 }
-body { overscroll-behavior-y: none; min-height: 100dvh; }
+/* The page itself never scrolls: each screen scrolls inside #app and the tab bar is a normal
+   flex row under it. iOS 26 home-screen apps misplace position:fixed bars (especially after
+   the keyboard has been open), so the tab bar must not depend on position:fixed. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--accent); }
@@ -92,24 +95,28 @@ svg { flex: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- Boot ---------- */
-.boot { min-height: 100dvh; display: flex; align-items: center; justify-content: center; }
+.boot { height: 100%; display: flex; align-items: center; justify-content: center; }
 .boot-dot { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-fill); animation: breathe 1.6s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { transform: scale(0.85); opacity: 0.6; } 50% { transform: scale(1); opacity: 1; } }
 
 /* ---------- Layout ---------- */
-#app { max-width: 520px; margin: 0 auto; min-height: 100dvh; position: relative; }
+#app { max-width: 520px; margin: 0 auto; height: 100%; position: relative; display: flex; flex-direction: column; overflow: hidden; }
 .screen {
   position: relative;
-  min-height: 100dvh;
-  padding: calc(env(safe-area-inset-top) + 18px) 18px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 28px);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: calc(env(safe-area-inset-top) + 18px) 18px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   animation: screen-in 0.22s ease-out;
 }
 .screen.no-tabs { padding-bottom: calc(env(safe-area-inset-bottom) + 28px); }
-.screen > * { position: relative; }
+.screen > * { position: relative; flex-shrink: 0; }
 @keyframes screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 .blob { position: absolute !important; pointer-events: none; z-index: 0; }
@@ -265,7 +272,7 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 
 /* ---------- Tab bar ---------- */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; max-width: 520px; margin: 0 auto;
+  position: relative; flex: none; z-index: 20; width: 100%;
   background: var(--nav); border-top: 1px solid var(--line);
   padding: 8px 6px calc(env(safe-area-inset-bottom) + 8px);
   display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center;
@@ -368,7 +375,10 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 .banner { display: flex; align-items: center; gap: 12px; background: var(--accent-fill); color: var(--accent-ink); border-radius: var(--r-m); padding: 12px 14px; font-weight: 600; font-size: 14px; border: none; width: 100%; text-align: left; }
 
 /* ---------- Setup ---------- */
-.setup { justify-content: center; gap: 18px; }
+.setup { gap: 18px; }
+/* Centre the setup steps without clipping them when the screen is short (auto margins collapse to 0 on overflow). */
+.setup > .steps-dots { margin-top: auto; }
+.setup > :last-child { margin-bottom: auto; }
 .setup .hero-icon { width: 92px; height: 92px; border-radius: 26px; align-self: flex-start; }
 .steps-dots { display: flex; gap: 6px; }
 .steps-dots span { width: 22px; height: 5px; border-radius: 3px; background: var(--line); }
@@ -392,3 +402,24 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---------- Apple Watch ---------- */
+.howto { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.howto > li { display: flex; gap: 12px; align-items: flex-start; font-size: 15px; line-height: 1.5; }
+.howto .n { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; margin-top: 1px; }
+.howto .types { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.codeline { display: block; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: var(--surface2); font-family: ui-monospace, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.htable { display: flex; flex-direction: column; }
+.hrow { display: grid; grid-template-columns: 1.3fr 1fr 0.8fr 1.1fr 1fr; gap: 6px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; align-items: center; }
+.hrow:first-child { border-top: none; }
+.hrow.head { font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 0; }
+.hrow > span:not(.d) { text-align: right; }
+.hrow .d { font-weight: 600; }
+.wstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wstat { display: flex; flex-direction: column; gap: 2px; min-width: 0; background: var(--surface2); border-radius: 16px; padding: 10px 12px; }
+.wstat .v { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sleepbars { display: flex; align-items: flex-end; gap: 5px; height: 84px; }
+.sleepbars .bar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.sleepbars .bar i { display: block; width: 100%; border-radius: 6px 6px 3px 3px; background: var(--accent-fill); min-height: 3px; }
+.sleepbars .bar i.empty { background: var(--line); }
+.sleepbars .bar span { font-size: 10px; color: var(--muted); }

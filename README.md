@@ -8,6 +8,8 @@ Emil's personal app for eating a little more, a little more often — gently.
 - **Train**: a beginner strength rhythm, walks and stretching, with a guided workout screen
 - **Progress**: journal, a pattern finder that links food to symptoms, weight and BMI
 - **Coach**: quick help offline, full chat with an optional Claude API key
+- **Apple Watch**: sleep, resting pulse, HRV, active calories, steps, exercise minutes and weight,
+  brought in by a Shortcut (web apps can't read Apple Health directly). Guide in the app under Settings → Apple Watch.
 
 It's a web app hosted on GitHub Pages. Open it in Safari on the iPhone and choose
 **Share → Add to Home Screen**. It works offline, and all data stays on the phone.
@@ -33,6 +35,7 @@ installs it straight away.
 | `js/planner.js` | Meal plan, "eat now", streaks, training rhythm |
 | `js/patterns.js` | Local food ↔ symptom pattern finder |
 | `js/ai.js` | Optional Claude features (photo estimate, coach, deeper patterns) |
+| `js/health.js` | Reads the Apple Health text from the Shortcut (`Type;Start;End;Value;Unit` per line) |
 | `js/data/` | Recipes, foods, workouts, daily words (English + Norwegian) |
 | `js/views/` | One file per screen |
 

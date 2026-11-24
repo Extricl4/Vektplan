@@ -1,9 +1,15 @@
 {
-  "version": "1.0.1",
-  "date": "2026-11-23",
-  "notes": "Reloading the app from Settings no longer touches other apps on the same site.",
-  "notes_nb": "Å laste appen på nytt fra Innstillinger påvirker ikke lenger andre apper på samme nettsted.",
+  "version": "1.1.0",
+  "date": "2026-11-24",
+  "notes": "The bottom bar is back on Today and stays put on every screen. Startup is shorter (no name or weight questions). New: Apple Watch sleep, pulse and movement through a Shortcut, see Settings → Apple Watch.",
+  "notes_nb": "Menylinjen nederst er tilbake på I dag og ligger fast på alle skjermer. Oppstarten er kortere (ingen spørsmål om navn eller vekt). Nytt: søvn, puls og bevegelse fra Apple Watch via en snarvei, se Innstillinger → Apple Watch.",
   "history": [
+    {
+      "version": "1.0.1",
+      "date": "2026-11-23",
+      "notes": "Reloading the app from Settings no longer touches other apps on the same site.",
+      "notes_nb": "Å laste appen på nytt fra Innstillinger påvirker ikke lenger andre apper på samme nettsted."
+    },
     {
       "version": "1.0.0",
       "date": "2026-11-23",

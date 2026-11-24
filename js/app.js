@@ -16,8 +16,9 @@ import * as progress from './views/progress.js';
 import * as coach from './views/coach.js';
 import * as settings from './views/settings.js';
 import * as setup from './views/setup.js';
+import * as health from './views/health.js';
 
-const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup };
+const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup, health };
 const app = document.getElementById('app');
 
 let current = null;
@@ -57,13 +58,17 @@ function render() {
       closeSheet(true);
       view.enter?.(ctx);
     }
-    const y = changed ? 0 : window.scrollY;
+    const y = changed ? 0 : nav.scroller()?.scrollTop || 0;
     app.innerHTML = view.render(ctx);
     current = view;
     currentName = name;
     currentCtx = ctx;
     currentHash = location.hash;
-    window.scrollTo(0, y);
+    const sc = nav.scroller();
+    if (sc) {
+      if (!changed) sc.style.animation = 'none'; // only animate when you actually go to a new screen
+      sc.scrollTop = y;
+    }
     view.mount?.(app, ctx);
   } catch (err) {
     console.error(err);
@@ -118,8 +123,20 @@ document.addEventListener('visibilitychange', () => {
 });
 
 onUpdate((u) => {
-  if ((u.status === 'ready' || u.status === 'available') && currentName === 'today' && !sheetOpen() && !isTyping()) render();
+  if ((u.status === 'ready' || u.status === 'available') && (currentName === 'today' || currentName === 'setup') && !sheetOpen() && !isTyping()) render();
 });
+
+// iOS 26 home-screen apps can leave the view shifted after the keyboard closes, which pushes
+// the bottom bar off screen. The page itself never scrolls, so snapping it back to 0 is safe.
+function resetViewport() {
+  if (isTyping()) return;
+  if (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop) window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+document.addEventListener('focusout', () => setTimeout(resetViewport, 60));
+window.visualViewport?.addEventListener('resize', () => setTimeout(resetViewport, 60));
+window.addEventListener('orientationchange', () => setTimeout(resetViewport, 300));
 
 window.addEventListener('unhandledrejection', (e) => console.warn('Unhandled', e.reason));
 

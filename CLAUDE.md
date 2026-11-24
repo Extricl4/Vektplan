@@ -21,6 +21,17 @@ UI text is bilingual: `tr('English', 'Norsk')` and `L({ en, nb })`.
 
 If you add a new file under `css/`, `js/`, `fonts/` or `icons/`, the bump script picks it up automatically.
 
+## Layout
+The page never scrolls: `#app` is a full-height flex column, each `.screen` scrolls inside it and the
+`.tabbar` is a normal row at the bottom. Don't go back to `position: fixed` bars or `window.scrollTo`
+(iOS 26 home-screen apps misplace fixed bars after the keyboard). Use `nav.scrollTo(y)` / `nav.scroller()`.
+Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
+
+## Apple Watch
+Web apps can't read HealthKit. A Shortcut (guide in `js/views/health.js`) copies Health samples as
+`Type;Start;End;Value;Unit` lines; `js/health.js` parses them (English/Norwegian names, ISO or default
+dates) into `health.days[YYYY-MM-DD]`. Sleep counts for the day you wake up.
+
 ## Data
 All user data is in `localStorage['vektplan.v1']` (see `js/store.js`). Keep changes backward compatible:
 add fields with defaults in `defaults()`; never rename existing ones without a migration in `migrate()`.
