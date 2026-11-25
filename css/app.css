@@ -423,3 +423,30 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 .sleepbars .bar i { display: block; width: 100%; border-radius: 6px 6px 3px 3px; background: var(--accent-fill); min-height: 3px; }
 .sleepbars .bar i.empty { background: var(--line); }
 .sleepbars .bar span { font-size: 10px; color: var(--muted); }
+
+/* ---------- Own food, plan builder, sessions (1.2) ---------- */
+.plate-mini { width: 44px; height: 44px; border-radius: 14px; flex: none; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.tip { display: flex; gap: 12px; align-items: flex-start; }
+.hero-plan { background: linear-gradient(160deg, var(--accent-soft), var(--surface) 70%); }
+.exlist { display: flex; flex-direction: column; }
+.exrow { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+.exrow:first-child { border-top: none; padding-top: 2px; }
+.exrow .n { width: 24px; height: 24px; border-radius: 50%; background: var(--surface2); color: var(--soft); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+.exrow .btn.tiny { min-height: 34px; padding: 0 10px; flex: none; }
+.mini { width: 30px; height: 26px; border: none; border-radius: 9px; background: var(--surface2); color: var(--soft); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: none; }
+.mini:disabled { opacity: 0.35; }
+.mini + .mini { margin-top: 0; }
+.daypick { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.daypick .dp { position: relative; min-height: 44px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; padding: 0; cursor: pointer; }
+.daypick.big .dp { min-height: 56px; font-size: 14px; }
+.daypick .dp[aria-pressed="true"] { background: var(--accent-fill); border-color: var(--accent-line); color: var(--accent-ink); }
+.daypick .dp i { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.week-plan { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.week-plan .wp { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border-radius: 12px; background: var(--surface2); min-width: 0; }
+.week-plan .wp.on { background: var(--accent-fill); color: var(--accent-ink); }
+.week-plan .d { font-size: 11px; font-weight: 700; }
+.week-plan .t { font-size: 10px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.wdot { position: absolute; right: -1px; top: -1px; width: 10px; height: 10px; border-radius: 50%; background: var(--sage); border: 2px solid var(--surface); }
+.wdot.inline { position: static; display: inline-block; vertical-align: -1px; border: none; width: 8px; height: 8px; }
+.choice .badge { vertical-align: 1px; }
+.stepper .kgv { cursor: pointer; padding: 0 4px; text-decoration: underline dotted var(--line); text-underline-offset: 4px; }

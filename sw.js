@@ -1,7 +1,7 @@
 /* Vektplan service worker.
    Keeps the app working offline and controls updates.
    VERSION and ASSETS are rewritten by tools/bump.py — don't edit them by hand. */
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 const CACHE = 'vektplan-' + VERSION;
 const ASSETS = [
   './',
@@ -10,6 +10,7 @@ const ASSETS = [
   './css/app.css',
   './js/ai.js',
   './js/app.js',
+  './js/data/exercises.js',
   './js/data/foods.js',
   './js/data/recipes.js',
   './js/data/shopping.js',
@@ -18,21 +19,26 @@ const ASSETS = [
   './js/health.js',
   './js/i18n.js',
   './js/meals.js',
+  './js/mymeals.js',
   './js/nav.js',
   './js/patterns.js',
   './js/planner.js',
   './js/store.js',
   './js/theme.js',
+  './js/training.js',
   './js/ui.js',
   './js/updates.js',
   './js/util.js',
   './js/version.js',
   './js/views/coach.js',
   './js/views/food.js',
+  './js/views/fuel.js',
   './js/views/health.js',
   './js/views/log.js',
+  './js/views/plan.js',
   './js/views/progress.js',
   './js/views/recipe.js',
+  './js/views/session.js',
   './js/views/settings.js',
   './js/views/setup.js',
   './js/views/today.js',

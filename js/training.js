@@ -1,0 +1,428 @@
+// Your own training plan: where you train, which days, and how muscle groups are split.
+// Before a plan is made, the original built-in rhythm (Strength A/B, walks, stretch) is used.
+import { S, mutate } from './store.js';
+import { LIB, GROUPS, GROUP_ORDER, PLACES, weighted, kgStep } from './data/exercises.js';
+import { WORKOUTS, WEEK_PLAN, OTHER_ACTIVITIES } from './data/workouts.js';
+import { L, tr } from './i18n.js';
+import { dayKey, weekday, dayNum, startOfWeek, uid } from './util.js';
+
+const N = (en, nb) => ({ en, nb });
+
+export const SPLITS = {
+  full: {
+    name: N('Full body', 'Hele kroppen'),
+    sub: N('Every session trains everything. Best for 2–3 days a week and for getting started.', 'Hver økt trener alt. Best for 2–3 dager i uka og når du skal komme i gang.'),
+    templates: [{ key: 'full', groups: ['legs', 'chest', 'back', 'shoulders', 'glutes', 'core'] }],
+  },
+  ul: {
+    name: N('Upper + lower', 'Overkropp + underkropp'),
+    sub: N('Upper body one day, legs and core the next. Great for 4 days.', 'Overkropp én dag, bein og kjerne neste. Fint for 4 dager.'),
+    templates: [
+      { key: 'upper', groups: ['chest', 'back', 'shoulders', 'biceps', 'triceps'] },
+      { key: 'lower', groups: ['legs', 'glutes', 'core'] },
+    ],
+  },
+  ppl: {
+    name: N('Push · Pull · Legs', 'Push · Pull · Bein'),
+    sub: N('Chest, shoulders and triceps; back and biceps; legs. Fits 3 or 6 days.', 'Bryst, skuldre og triceps; rygg og biceps; bein. Passer 3 eller 6 dager.'),
+    templates: [
+      { key: 'push', groups: ['chest', 'shoulders', 'triceps'] },
+      { key: 'pull', groups: ['back', 'biceps', 'core'] },
+      { key: 'legs', groups: ['legs', 'glutes', 'core'] },
+    ],
+  },
+  custom: {
+    name: N('I pick the muscle groups', 'Jeg velger muskelgrupper'),
+    sub: N('Choose what each day trains, for example chest + arms on Monday.', 'Velg hva hver dag trener, for eksempel bryst + armer på mandag.'),
+    templates: [],
+  },
+};
+
+const TEMPLATE_NAMES = {
+  full: N('Full body', 'Hele kroppen'),
+  upper: N('Upper body', 'Overkropp'),
+  lower: N('Lower body', 'Underkropp'),
+  push: N('Push', 'Push'),
+  pull: N('Pull', 'Pull'),
+  legs: N('Legs', 'Bein'),
+};
+
+export const LENGTHS = {
+  short: { n: 4, sets: 2, name: N('Short', 'Kort'), sub: N('About 20 min', 'Cirka 20 min') },
+  normal: { n: 6, sets: 3, name: N('Normal', 'Vanlig'), sub: N('About 35 min', 'Cirka 35 min') },
+  long: { n: 7, sets: 3, name: N('Long', 'Lang'), sub: N('About 50 min', 'Cirka 50 min') },
+};
+
+export const REST_MODES = {
+  mix: N('Walks and stretching', 'Gåturer og tøying'),
+  walk: N('Easy walks', 'Rolige gåturer'),
+  none: N('Just rest', 'Bare hvile'),
+};
+
+export const groupName = (g) => L(GROUPS[g] || N(g, g));
+export const groupsText = (groups) => groups.filter((g) => GROUPS[g]).map(groupName).join(' · ');
+// Built-in exercises plus the ones you made yourself.
+export const customEx = () => S().training?.customEx || {};
+export const getEx = (id) => LIB[id] || customEx()[id] || null;
+export const exById = getEx;
+export const exName = (id) => (getEx(id) ? L(getEx(id).name) : id);
+export const allEx = () => ({ ...LIB, ...customEx() });
+// 20 kg, 22.5 kg (with a decimal comma in Norwegian).
+export const kgFmt = (kg) => `${(Math.round(kg * 10) / 10).toLocaleString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { maximumFractionDigits: 1 })} kg`;
+
+// Gentle = for when you eat very little: fewer sets, longer rest, stop well before failure.
+export const LEVELS = {
+  gentle: { sets: 2, maxN: 5, rest: 90, name: N('Gentle', 'Skånsom'), sub: N('Short sessions, 2 sets, long rests. Best while you are eating little: muscle grows from food and rest, not from wearing yourself out.', 'Korte økter, 2 sett, lange pauser. Best mens du spiser lite: muskler vokser av mat og hvile, ikke av å slite deg ut.') },
+  normal: { sets: 3, maxN: 7, rest: 75, name: N('Normal', 'Vanlig'), sub: N('3 sets per exercise. For when eating and energy are steady.', '3 sett per øvelse. For når maten og energien er stabil.') },
+};
+// Never auto-picked: they press on the stomach. You can still add them yourself.
+const NO_AUTO = new Set(['crunch', 'legraise', 'cablecrunch']);
+// Near-identical movements: a suggested session gets at most one of each family.
+const FAMILY = {
+  bwsquat: 'squat', squat: 'squat', bbsquat: 'squat', legpress: 'squat',
+  pushup: 'pushup', incline: 'pushup', diamond: 'pushup',
+  dbpress: 'bench', benchpress: 'bench', chestpress: 'bench',
+  dbfly: 'fly', cablefly: 'fly',
+  bridge: 'bridge', singlebridge: 'bridge', hipthrust: 'bridge',
+  press: 'ohp', machpress: 'ohp', pikepush: 'ohp',
+  latpull: 'vpull', pullup: 'vpull', chinup: 'vpull',
+  curl: 'curl', bagcurl: 'curl', bbcurl: 'curl', cablecurl: 'curl',
+  ohext: 'ext', skull: 'ext', pushdown: 'ext',
+  rdl: 'hinge', deadlift: 'hinge',
+  plank: 'plank', sideplank: 'plank',
+};
+
+export const training = () => S().training || {};
+export const programReady = () => (training().sessions || []).length > 0;
+export const sessions = () => training().sessions || [];
+export const sessionById = (id) => sessions().find((s) => s.id === id) || null;
+
+// ---------- Picking exercises ----------
+function allowedEquip(place) {
+  return (PLACES[place] || PLACES.home).equip;
+}
+export function available(exId, place = training().place || 'home') {
+  const ex = LIB[exId];
+  return !!ex && ex.equip.some((e) => allowedEquip(place).includes(e));
+}
+
+const HEAVY = new Set(['deadlift', 'bbsquat']);
+
+function poolFor(group, place, gentle = false) {
+  // With weights available, body-weight moves come after the loaded ones of the same rank.
+  const rank = (ex) => ex.pri + (place !== 'home' && ex.equip.length === 1 && ex.equip[0] === 'none' ? 0.5 : 0);
+  return Object.entries(LIB)
+    .filter(([id, ex]) => !NO_AUTO.has(id) && !(gentle && HEAVY.has(id)) && ex.groups[0] === group && ex.equip.some((e) => allowedEquip(place).includes(e)))
+    .sort((a, b) => rank(a[1]) - rank(b[1]))
+    .map(([id]) => id);
+}
+
+// Fill a session: round-robin over its muscle groups (big groups first), main lifts first.
+// `variant` rotates the choices so Full body A and B don't repeat each other.
+export function suggest(groups, place = 'home', n = 6, variant = 0, sets = 3, gentle = (training().level || 'gentle') === 'gentle') {
+  const gs = GROUP_ORDER.filter((g) => groups.includes(g) && g !== 'mobility');
+  const pools = gs.map((g) => {
+    const p = poolFor(g, place, gentle);
+    const v = p.length ? variant % p.length : 0;
+    return p.slice(v).concat(p.slice(0, v));
+  });
+  const picked = [];
+  const fams = new Set();
+  const free = (x) => !picked.includes(x) && !(FAMILY[x] && fams.has(FAMILY[x]));
+  for (let round = 0; round < 6 && picked.length < n; round++) {
+    gs.forEach((g, gi) => {
+      if (picked.length >= n) return;
+      const id = pools[gi].find(free);
+      if (id) { picked.push(id); if (FAMILY[id]) fams.add(FAMILY[id]); }
+    });
+  }
+  // Small groups may run out of distinct moves: borrow ones that also train them, then allow repeats of a family.
+  const ok = (ex) => ex.equip.some((e) => allowedEquip(place).includes(e));
+  const secondary = Object.entries(LIB)
+    .filter(([id, ex]) => !NO_AUTO.has(id) && !(gentle && HEAVY.has(id)) && ok(ex) && ex.groups.slice(1).some((g) => gs.includes(g)))
+    .sort((a, b) => a[1].pri - b[1].pri)
+    .map(([id]) => id);
+  for (const id of secondary) {
+    if (picked.length >= n) break;
+    if (free(id)) { picked.push(id); if (FAMILY[id]) fams.add(FAMILY[id]); }
+  }
+  for (let gi = 0; picked.length < n && gi < gs.length * 3; gi++) {
+    const id = pools[gi % gs.length].find((x) => !picked.includes(x));
+    if (id) picked.push(id);
+  }
+  return picked.map((id) => ({ id, sets, reps: LIB[id].def }));
+}
+
+// The exercises you could add to a session, best first.
+export function pickList({ group = 'all', place = training().place || 'home', onlyMine = true, q = '' } = {}) {
+  const needle = String(q || '').toLowerCase().trim();
+  return Object.entries(allEx())
+    .filter(([, ex]) => group === 'all' || ex.groups.includes(group))
+    .filter(([id, ex]) => !onlyMine || ex.custom || ex.equip.some((e) => allowedEquip(place).includes(e)))
+    .filter(([, ex]) => !needle || L(ex.name).toLowerCase().includes(needle) || ex.name.en.toLowerCase().includes(needle))
+    .sort((a, b) => (a[1].groups[0] === group ? 0 : 1) - (b[1].groups[0] === group ? 0 : 1) || a[1].pri - b[1].pri)
+    .map(([id]) => id);
+}
+
+export function addCustomExercise({ name, group, equip, mode, def }) {
+  const id = 'x-' + uid();
+  mutate((s) => {
+    s.training ||= {};
+    s.training.customEx ||= {};
+    s.training.customEx[id] = { groups: [group || 'core'], equip: [equip || 'none'], mode: mode || 'reps', def: Number(def) || (mode === 'time' ? 30 : 10), pri: 5, name: { en: name, nb: name }, cue: { en: '', nb: '' }, custom: true };
+  });
+  return id;
+}
+
+export function alternatives(exId, place = training().place || 'home') {
+  const ex = getEx(exId);
+  if (!ex) return [];
+  return Object.entries(allEx())
+    .filter(([id, e]) => id !== exId && e.groups[0] === ex.groups[0] && e.equip.some((q) => allowedEquip(place).includes(q)))
+    .sort((a, b) => a[1].pri - b[1].pri)
+    .map(([id]) => id);
+}
+
+// ---------- Building a plan ----------
+const nameFromGroups = (groups) => groups.filter((g) => GROUPS[g]).slice(0, 3).map(groupName).join(' + ') || tr('Session', 'Økt');
+
+export function buildPlan(cfg) {
+  const place = cfg.place || 'home';
+  const lvl = LEVELS[cfg.level] || LEVELS.gentle;
+  const base = LENGTHS[cfg.length] || LENGTHS.normal;
+  const len = { n: Math.min(base.n, lvl.maxN), sets: Math.min(base.sets, lvl.sets) };
+  const days = [...new Set(cfg.days)].sort((a, b) => a - b);
+  const out = [];
+  const schedule = {};
+  if (cfg.split === 'custom') {
+    days.forEach((d, i) => {
+      const groups = cfg.custom?.[d]?.length ? cfg.custom[d] : SPLITS.full.templates[0].groups;
+      const s = { id: 's-' + uid(), name: nameFromGroups(groups), groups, ex: suggest(groups, place, len.n, i, len.sets, cfg.level !== 'normal') };
+      out.push(s);
+      schedule[d] = s.id;
+    });
+    // Same name twice (three chest days)? Call them A, B, C.
+    const count = {};
+    out.forEach((s) => { count[s.name] = (count[s.name] || 0) + 1; });
+    const seen = {};
+    out.forEach((s) => { if (count[s.name] > 1) { const n = seen[s.name] || 0; seen[s.name] = n + 1; s.name = `${s.name} ${'ABCDEFG'[n]}`; } });
+  } else {
+    const tpls = (SPLITS[cfg.split] || SPLITS.full).templates;
+    const uses = {};
+    days.forEach((d, i) => { const t = tpls[i % tpls.length]; uses[t.key] = (uses[t.key] || 0) + 1; });
+    const made = {};
+    days.forEach((d, i) => {
+      const t = tpls[i % tpls.length];
+      const rep = Math.floor(i / tpls.length);
+      const key = t.key + rep;
+      if (!made[key]) {
+        const letter = uses[t.key] > 1 ? ` ${'ABCDEFG'[rep]}` : '';
+        made[key] = { id: 's-' + uid(), name: L(TEMPLATE_NAMES[t.key]) + letter, groups: t.groups.slice(), ex: suggest(t.groups, place, len.n, rep, len.sets, cfg.level !== 'normal') };
+        out.push(made[key]);
+      }
+      schedule[d] = made[key].id;
+    });
+  }
+  // Rest days: easy walks and stretching, with at least one day fully off.
+  const extras = {};
+  const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !days.includes(d));
+  const restMode = cfg.rest || 'mix';
+  free.forEach((d, i) => {
+    if (restMode === 'none' || i === free.length - 1) return;
+    extras[d] = restMode === 'walk' ? 'walk' : i % 2 === 0 ? 'walk' : 'stretch';
+  });
+  return { place, days, split: cfg.split, length: cfg.length || 'normal', level: cfg.level || 'gentle', rest: restMode, restSec: lvl.rest, custom: cfg.custom || {}, sessions: out, schedule, extras, made: Date.now() };
+}
+
+// Saving a new plan keeps the exercises you made yourself.
+export function savePlan(plan) {
+  mutate((s) => { s.training = { ...plan, customEx: s.training?.customEx || {} }; });
+}
+
+export const restSeconds = () => training().restSec || S().prefs.restSec || 60;
+
+export function updateSession(id, fn) {
+  mutate((s) => {
+    const x = s.training?.sessions?.find((q) => q.id === id);
+    if (x) fn(x);
+  });
+}
+
+export function addSession(groups = ['chest', 'back']) {
+  const t = training();
+  const lvl = LEVELS[t.level] || LEVELS.gentle;
+  const base = LENGTHS[t.length] || LENGTHS.normal;
+  const sess = { id: 's-' + uid(), name: nameFromGroups(groups), groups, ex: suggest(groups, t.place || 'home', Math.min(base.n, lvl.maxN), sessions().length, Math.min(base.sets, lvl.sets)) };
+  mutate((s) => {
+    s.training ||= {};
+    (s.training.sessions ||= []).push(sess);
+    s.training.schedule ||= {};
+    s.training.extras ||= {};
+  });
+  return sess;
+}
+
+// Fill a session again from its muscle groups (after changing them).
+export function refillSession(id) {
+  const t = training();
+  const lvl = LEVELS[t.level] || LEVELS.gentle;
+  const base = LENGTHS[t.length] || LENGTHS.normal;
+  updateSession(id, (x) => {
+    x.ex = suggest(x.groups, t.place || 'home', Math.min(base.n, lvl.maxN), sessions().findIndex((q) => q.id === id), Math.min(base.sets, lvl.sets));
+  });
+}
+
+export function deleteSession(id) {
+  mutate((s) => {
+    const t = s.training;
+    if (!t) return;
+    t.sessions = (t.sessions || []).filter((x) => x.id !== id);
+    for (const [d, v] of Object.entries(t.schedule || {})) if (v === id) delete t.schedule[d];
+  });
+}
+
+// Put a session on a weekday (or take it off). A weekday holds one session.
+export function setDay(weekdayIdx, id) {
+  mutate((s) => {
+    const t = s.training;
+    if (!t) return;
+    t.schedule ||= {};
+    t.extras ||= {};
+    if (id) {
+      t.schedule[weekdayIdx] = id;
+      delete t.extras[weekdayIdx];
+    } else delete t.schedule[weekdayIdx];
+    t.days = Object.keys(t.schedule).map(Number).sort();
+  });
+}
+
+export function setExtra(weekdayIdx, kind) {
+  mutate((s) => {
+    const t = s.training;
+    if (!t) return;
+    t.extras ||= {};
+    if (kind) t.extras[weekdayIdx] = kind;
+    else delete t.extras[weekdayIdx];
+  });
+}
+
+// ---------- What's planned ----------
+function legacyPlanned(key) {
+  const type = WEEK_PLAN[weekday(key)];
+  if (type !== 'strength') return type;
+  const weekNo = Math.floor(dayNum(startOfWeek(key)) / 7);
+  const before = WEEK_PLAN.slice(0, weekday(key)).filter((t) => t === 'strength').length;
+  return (weekNo + before) % 2 === 0 ? 'strengthA' : 'strengthB';
+}
+
+export function plannedFor(key = dayKey()) {
+  if (!programReady()) return legacyPlanned(key);
+  const t = training();
+  const wd = weekday(key);
+  const sid = t.schedule?.[wd];
+  if (sid && sessionById(sid)) return sid;
+  return t.extras?.[wd] || 'rest';
+}
+
+function estimateMinutes(ex) {
+  const m = ex.reduce((sum, e) => {
+    const x = getEx(e.id);
+    if (!x) return sum;
+    return sum + (e.sets || 1) * (x.mode === 'time' ? (e.reps || x.def) / 60 + 1 : 1.8);
+  }, 4);
+  return Math.max(10, Math.round(m / 5) * 5);
+}
+
+// One shape for every kind of session: your own, the built-in ones, walks.
+export function workoutDef(id) {
+  if (!id || id === 'rest') return null;
+  if (id === 'walk') return { id, name: L(WORKOUTS.walk.name), sub: L(WORKOUTS.walk.sub), kind: 'walk', ex: [], minutes: 20, groups: [] };
+  const s = sessionById(id);
+  if (s) return { id, name: s.name, sub: groupsText(s.groups), kind: 'strength', ex: s.ex.filter((e) => getEx(e.id)), minutes: estimateMinutes(s.ex), groups: s.groups, own: true };
+  const w = WORKOUTS[id];
+  if (w) {
+    const ex = w.ex.map((e) => ({ id: e, sets: w.kind === 'mobility' ? 1 : 3, reps: LIB[e].def }));
+    return { id, name: L(w.name), sub: L(w.sub), kind: w.kind, ex, minutes: w.minutes, groups: [] };
+  }
+  return null;
+}
+
+export function activityName(id, saved) {
+  if (id === 'rest') return tr('Rest day', 'Hviledag');
+  const def = workoutDef(id);
+  if (def) return def.name;
+  if (saved) return saved;
+  const o = OTHER_ACTIVITIES.find((a) => a.id === id);
+  return o ? L(o.name) : tr('Workout', 'Økt');
+}
+
+// Short label for the week strip.
+export function shortName(id) {
+  if (id === 'rest') return tr('Rest', 'Hvile');
+  if (id === 'walk') return tr('Walk', 'Gå');
+  if (id === 'stretch') return tr('Stretch', 'Tøy');
+  if (id === 'strengthA' || id === 'strengthB') return tr('Strength', 'Styrke');
+  const s = sessionById(id);
+  if (!s) return '';
+  const first = s.name.split(/[ +·]/)[0];
+  return first.length > 7 ? first.slice(0, 6) + '.' : first;
+}
+
+// ---------- Your history per exercise ----------
+export function lastLog(exId, beforeTs = Infinity) {
+  const ws = S().workouts;
+  for (let i = ws.length - 1; i >= 0; i--) {
+    const w = ws[i];
+    if (w.ts >= beforeTs) continue;
+    const sets = w.log?.[exId];
+    if (sets?.length) return { date: w.date, sets };
+  }
+  return null;
+}
+
+// If every set last time reached the target, gently suggest a bit more weight.
+export function progressHint(exId, target) {
+  const ex = getEx(exId);
+  if (!weighted(ex)) return null;
+  const last = lastLog(exId);
+  if (!last) return null;
+  const kgs = last.sets.map((s) => s.kg).filter((k) => k > 0);
+  if (!kgs.length) return null;
+  const top = Math.max(...kgs);
+  const hit = last.sets.length >= (target.sets || 1) && last.sets.every((s) => s.r >= (target.reps || ex.def));
+  return hit ? { kg: top + kgStep(ex), from: top } : null;
+}
+
+export function bestSet(exId) {
+  let best = null;
+  for (const w of S().workouts) {
+    for (const s of w.log?.[exId] || []) {
+      if (s.kg > 0 && (!best || s.kg > best.kg || (s.kg === best.kg && s.r > best.r))) best = { ...s, date: w.date };
+    }
+  }
+  return best;
+}
+
+// ---------- Saving ----------
+export function saveWorkout(wid, minutes, sets = 0, extra = {}) {
+  const name = activityName(wid);
+  mutate((s) => {
+    s.workouts.push({ id: uid(), date: dayKey(), wid, name, minutes: Math.min(300, Math.max(1, Math.round(minutes))), sets, ts: Date.now(), ...extra });
+  });
+}
+
+// New best weights in a finished workout (compared with everything before it).
+export function newBests(log, beforeTs) {
+  const out = [];
+  for (const [exId, sets] of Object.entries(log || {})) {
+    const top = Math.max(0, ...sets.map((x) => x.kg || 0));
+    if (!top) continue;
+    let prev = 0;
+    for (const w of S().workouts) {
+      if (w.ts >= beforeTs) continue;
+      for (const x of w.log?.[exId] || []) prev = Math.max(prev, x.kg || 0);
+    }
+    if (prev && top > prev) out.push({ exId, kg: top, prev });
+  }
+  return out;
+}

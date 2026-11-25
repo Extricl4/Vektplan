@@ -8,6 +8,7 @@ import { cheer, portionButtons } from '../meals.js';
 import { hasAI, estimateMeal } from '../ai.js';
 import { esc, dayKey, addDays, uid, norm, readFileAsDataURL, shrinkImage } from '../util.js';
 import { nav } from '../nav.js';
+import { myMeals, sortedMeals, myMealSheet, saveMyMeal } from '../mymeals.js';
 
 let st = null;
 function fresh(slot) {
@@ -56,21 +57,27 @@ function resultRow(type, id, name, sub, kcal, f) {
 
 function searchResults() {
   const q = norm(st.q.trim());
+  const mine = sortedMeals(myMeals());
+  const mineRows = (list) => list.map((m) => resultRow('my', m.id, m.name, m.note || tr('My food', 'Min mat'), m.kcal || 0, m.fodmap || 'low')).join('');
   if (!q) {
-    const rec = recentItems();
+    const rec = recentItems().filter((l) => !mine.some((m) => norm(m.name) === norm(l.title)));
+    const myHTML = `<div class="row between"><p class="label">${tr('My food', 'Min mat')}</p><button class="link-btn small" data-act="newMy">${icon('plus', 14)} ${tr('New', 'Ny')}</button></div>
+      ${mine.length ? `<div class="list">${mineRows(mine.slice(0, 8))}</div>` : `<p class="small muted" style="margin-bottom:6px">${tr('Save the things you actually eat, and log them in one tap next time.', 'Lagre det du faktisk spiser, så logger du det med ett trykk neste gang.')}</p>`}`;
     const recHTML = rec.length
       ? `<p class="label">${tr('Recent', 'Nylig')}</p><div class="list">${rec.map((l) => resultRow('recent', l.id, l.title, l.items?.length ? l.items.map((i) => i.name).join(', ') : tr('logged before', 'logget før'), l.baseKcal ?? l.kcal, l.fodmap || 'low')).join('')}</div>`
       : '';
     const quick = ['egg', 'spelt-bread', 'rice', 'lf-milk', 'banana-firm', 'peanut-butter', 'cheese', 'lf-yogurt', 'rice-cakes', 'chicken-breast'];
-    return `${recHTML}<p class="label" style="margin-top:6px">${tr('Quick add', 'Hurtigvalg')}</p><div class="list">${quick.map((id) => FOODS.find((f) => f.id === id)).filter(Boolean).map((f) => resultRow('food', f.id, L(f.n), L(f.p), f.kcal, f.f)).join('')}</div>`;
+    return `${myHTML}${recHTML}<p class="label" style="margin-top:6px">${tr('Quick add', 'Hurtigvalg')}</p><div class="list">${quick.map((id) => FOODS.find((f) => f.id === id)).filter(Boolean).map((f) => resultRow('food', f.id, L(f.n), L(f.p), f.kcal, f.f)).join('')}</div>`;
   }
+  const mineHits = mine.filter((m) => norm(m.name).includes(q)).slice(0, 6);
   const recipes = RECIPES.filter((r) => norm(r.name.en).includes(q) || norm(r.name.nb).includes(q)).slice(0, 8);
   const foods = allFoods().filter((f) => norm(f.n.en).includes(q) || norm(f.n.nb).includes(q)).slice(0, 25);
-  if (!recipes.length && !foods.length) {
+  if (!recipes.length && !foods.length && !mineHits.length) {
     return `<div class="empty-state">${icon('search', 30)}<p>${tr('No match. Add it as your own food.', 'Ingen treff. Legg den til som egen matvare.')}</p>
       <button class="btn secondary small" data-act="custom">${icon('plus', 16)} ${tr('Add', 'Legg til')} «${esc(st.q.trim())}»</button></div>`;
   }
-  return `${recipes.length ? `<p class="label">${tr('Recipes', 'Oppskrifter')}</p><div class="list">${recipes.map((r) => resultRow('recipe', r.id, L(r.name), tr('1 portion', '1 porsjon'), r.kcal, 'low')).join('')}</div>` : ''}
+  return `${mineHits.length ? `<p class="label">${tr('My food', 'Min mat')}</p><div class="list">${mineRows(mineHits)}</div>` : ''}
+    ${recipes.length ? `<p class="label">${tr('Recipes', 'Oppskrifter')}</p><div class="list">${recipes.map((r) => resultRow('recipe', r.id, L(r.name), tr('1 portion', '1 porsjon'), r.kcal, 'low')).join('')}</div>` : ''}
     ${foods.length ? `<p class="label" style="margin-top:6px">${tr('Foods', 'Matvarer')}</p><div class="list">${foods.map((f) => resultRow('food', f.id, L(f.n), L(f.p), f.kcal, f.f)).join('')}</div>` : ''}`;
 }
 
@@ -135,6 +142,7 @@ function cartCard() {
         <span class="v num" style="min-width:40px">×${String(it.qty).replace('.', getDecimal())}</span>
         <button data-act="qty" data-k="${it.k}" data-d="0.5" aria-label="${tr('More', 'Mer')}">+</button></span></div>`).join('')}</div>
   </section>
+  ${!(st.cart.length === 1 && st.cart[0].myId) ? `<button class="link-btn small" style="align-self:flex-start" data-act="saveMine">${icon('heart', 14)} ${tr('Save this meal to My food', 'Lagre måltidet i Min mat')}</button>` : ''}
   ${showPortion ? `<p class="label">${tr('How much of it did you eat?', 'Hvor mye av det spiste du?')}</p>${portionButtons(st.portion, 'portion')}` : ''}`;
 }
 
@@ -302,6 +310,9 @@ export const actions = {
     } else if (type === 'recipe') {
       const r = recipeById(id);
       if (r) addToCart({ ref: 'recipe:' + r.id, name: L(r.name), portion: tr('1 portion', '1 porsjon'), kcal: r.kcal, fodmap: 'low', tags: [], rid: r.id });
+    } else if (type === 'my') {
+      const m = myMeals().find((x) => x.id === id);
+      if (m) addToCart({ ref: 'my:' + m.id, name: m.name, portion: tr('1 portion', '1 porsjon'), kcal: m.kcal || 0, fodmap: m.fodmap || 'low', tags: [], myId: m.id });
     } else if (type === 'recent') {
       let l = null;
       for (let i = 0; i < 21 && !l; i++) l = peekDay(addDays(dayKey(), -i)).logs.find((x) => x.id === id);
@@ -318,6 +329,14 @@ export const actions = {
     nav.rerender();
   },
   portion: (el) => { st.portion = Number(el.dataset.p); nav.rerender(); },
+  newMy: () => myMealSheet(null, { prefill: { name: st.q.trim() }, onSaved: () => nav.rerender() }),
+  saveMine: () => {
+    const items = st.cart.map((c) => ({ name: c.name, kcal: Math.round(c.kcal * c.qty), qty: c.qty, fodmap: c.fodmap }));
+    const kcal = items.reduce((a, i) => a + i.kcal, 0);
+    const name = st.est?.title || (items.length === 1 ? items[0].name : items.slice(0, 3).map((i) => i.name).join(', '));
+    const worstF = worst(items);
+    myMealSheet(null, { prefill: { name, kcal, items, fodmap: worstF === 'high' ? 'moderate' : worstF === 'low' ? 'low' : 'check' }, onSaved: () => nav.rerender() });
+  },
   custom: () => customSheet(st.q.trim()),
   customFor: (el) => customSheet(st.unmatched[Number(el.dataset.i)] || ''),
   photo: async (el) => {
@@ -362,7 +381,9 @@ export const actions = {
     const title = st.est?.title || (items.length === 1 ? items[0].name : items.slice(0, 3).map((i) => i.name).join(', ') + (items.length > 3 ? '…' : ''));
     const tags = [...new Set(items.flatMap((i) => i.tags))];
     const single = st.cart.length === 1 ? st.cart[0] : null;
-    addLog(key, { slot: st.slot || null, title, baseKcal: base, portion, items, tags, fodmap: worst(items), source: st.mode, rid: single?.rid || null });
+    addLog(key, { slot: st.slot || null, title, baseKcal: base, portion, items, tags, fodmap: worst(items), source: st.mode, rid: single?.rid || null, myId: single?.myId || null });
+    const usedMine = st.cart.filter((c) => c.myId).map((c) => c.myId);
+    if (usedMine.length) mutate((s) => { for (const m of s.myMeals) if (usedMine.includes(m.id)) { m.used = (m.used || 0) + 1; m.last = Date.now(); } });
     const flagged = items.filter((i) => i.fodmap === 'high');
     st = null;
     const names = flagged.map((i) => i.name).join(', ');

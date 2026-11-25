@@ -33,7 +33,7 @@ function body() {
     case 0:
       return `<img class="hero-icon" src="./icons/icon-192.png" alt="">
         <div class="col" style="gap:8px"><h1 class="h1" style="font-size:32px">${name ? tr(`Hi ${esc(name)}, welcome to Vektplan`, `Hei ${esc(name)}, velkommen til Vektplan`) : tr('Welcome to Vektplan', 'Velkommen til Vektplan')}</h1>
-        <p class="soft" style="font-size:17px;line-height:1.5">${tr('Your calm helper for eating a little more, a little more often. Gentle low-FODMAP food, a coach that tells you what to eat now, and a journal that helps you understand your stomach.', 'Din rolige hjelper for å spise litt mer, litt oftere. Skånsom lav-FODMAP-mat, en coach som sier hva du skal spise nå, og en dagbok som hjelper deg å forstå magen din.')}</p></div>
+        <p class="soft" style="font-size:17px;line-height:1.5">${tr('Your calm helper for eating a little more, a little more often. Your own food or gentle low-FODMAP ideas, training that fits your energy, and a journal that helps you understand your stomach.', 'Din rolige hjelper for å spise litt mer, litt oftere. Din egen mat eller milde lav-FODMAP-forslag, trening som passer energien din, og en dagbok som hjelper deg å forstå magen din.')}</p></div>
         <p class="label">${tr('Language', 'Språk')}</p>
         <div class="col"><button class="choice" aria-pressed="${lang === 'en'}" data-act="lang" data-v="en">English</button>
         <button class="choice" aria-pressed="${lang === 'nb'}" data-act="lang" data-v="nb">Norsk</button></div>
@@ -48,7 +48,7 @@ function body() {
     default: {
       const home = !isStandalone();
       return `<h1 class="h1" style="font-size:30px">${tr("You're all set", 'Alt er klart')}${name ? `, ${esc(name)}` : ''}.</h1>
-        <p class="soft" style="font-size:17px;line-height:1.5">${tr('Open Vektplan when it is time to eat, tap "I ate it", and write a line in the journal in the evening. That is all it takes.', 'Åpne Vektplan når det er tid for mat, trykk «Jeg spiste det», og skriv en linje i dagboka om kvelden. Det er alt som skal til.')}</p>
+        <p class="soft" style="font-size:17px;line-height:1.5">${tr(`Tap "I've eaten" when you have had something, your own food or an idea from the app, and write a line in the journal in the evening. That is all it takes.`, 'Trykk «Jeg har spist» når du har fått i deg noe, din egen mat eller et forslag fra appen, og skriv en linje i dagboka om kvelden. Det er alt som skal til.')}</p>
         <p class="small soft" style="line-height:1.5">${tr('Weight, calorie goal, calm mode and Apple Watch are in Settings whenever you want them.', 'Vekt, kalorimål, rolig modus og Apple Watch finner du i Innstillinger når du vil.')}</p>
         ${home ? `<div class="note">${icon('phone', 20)}<span>${isIOS() ? tr('Tip: tap the Share button in Safari and choose "Add to Home Screen" so Vektplan opens like a real app.', 'Tips: trykk Del-knappen i Safari og velg «Legg til på Hjem-skjerm», så åpner Vektplan seg som en ekte app.') : tr('Tip: open this page in Safari on your iPhone and choose Share, then "Add to Home Screen".', 'Tips: åpne siden i Safari på iPhonen og velg Del, og så «Legg til på Hjem-skjerm».')}</span></div>` : ''}
         ${nextBtns(tr('Open Vektplan', 'Åpne Vektplan'))}`;
@@ -70,7 +70,7 @@ function finish() {
     s.profile.onboarded = true;
   });
   draft = null;
-  toast(tr("Welcome! Let's eat something small.", 'Velkommen! La oss spise noe lite.'), 2600);
+  toast(tr('Welcome. Take it one meal at a time.', 'Velkommen. Ta ett måltid om gangen.'), 2600);
   nav.go('today');
 }
 

@@ -1,31 +1,53 @@
-// Meal plan, "eat now" logic, totals, streaks and the weekly training rhythm.
+// Meal plan, "what is next" logic, totals, streaks and the weekly training rhythm.
 import { S, peekDay, day, activeSlots, mutate } from './store.js';
 import { POOLS, recipeById } from './data/recipes.js';
-import { WEEK_PLAN } from './data/workouts.js';
-import { L } from './i18n.js';
+import { plannedFor } from './training.js';
+import { healthDay } from './health.js';
+import { L, tr } from './i18n.js';
+import { myMeals, myMealById, mealsFor } from './mymeals.js';
 import { dayKey, dayNum, weekday, toMinutes, fromMinutes, nowMinutes, addDays, startOfWeek, daysBetween } from './util.js';
 
 const SEED = { breakfast: 0, snack1: 2, lunch: 1, snack2: 5, dinner: 3, evening: 4 };
 const SOON_WINDOW = 45; // minutes before a meal when it becomes "up next"
+
+// Where meal ideas come from. 'auto' mixes in your own food once you have saved a couple.
+export function planSource() {
+  const p = S().prefs.planSource || 'auto';
+  if (p === 'auto') return myMeals().length >= 2 ? 'mix' : 'recipes';
+  return p;
+}
+
+function recipeFor(slot, key, n, used) {
+  if (slot.kind === 'dinner' && weekday(key) === 4 && !used.has('fredagstaco')) return { rid: 'fredagstaco' };
+  const pool = POOLS[slot.kind] || POOLS.snack;
+  let i = (n + (SEED[slot.id] ?? 0)) % pool.length;
+  for (let k = 0; k < pool.length && used.has(pool[i]); k++) i = (i + 1) % pool.length;
+  return { rid: pool[i] };
+}
+
+function mineFor(slot, n, used) {
+  const list = mealsFor(slot.kind).filter((m) => !used.has('my:' + m.id));
+  if (!list.length) return null;
+  return { my: list[(n + (SEED[slot.id] ?? 0)) % list.length].id };
+}
 
 export function planFor(key) {
   const d = peekDay(key);
   const used = new Set();
   const out = {};
   const n = dayNum(key);
+  const src = planSource();
   for (const slot of activeSlots()) {
     let item = d.plan?.[slot.id];
+    if (item?.my && !myMealById(item.my)) item = null; // that food was deleted
     if (!item) {
-      if (slot.kind === 'dinner' && weekday(key) === 4 && !used.has('fredagstaco')) {
-        item = { rid: 'fredagstaco' };
-      } else {
-        const pool = POOLS[slot.kind] || POOLS.snack;
-        let i = (n + (SEED[slot.id] ?? 0)) % pool.length;
-        for (let k = 0; k < pool.length && used.has(pool[i]); k++) i = (i + 1) % pool.length;
-        item = { rid: pool[i] };
-      }
+      if (src === 'free') item = { free: true };
+      else if (src === 'mine') item = mineFor(slot, n, used) || { free: true };
+      else if (src === 'mix' && (n + (SEED[slot.id] ?? 0)) % 2 === 0) item = mineFor(slot, n, used) || recipeFor(slot, key, n, used);
+      else item = recipeFor(slot, key, n, used);
     }
     if (item.rid) used.add(item.rid);
+    if (item.my) used.add('my:' + item.my);
     out[slot.id] = item;
   }
   return out;
@@ -36,8 +58,12 @@ export function itemInfo(item) {
     const r = recipeById(item.rid);
     if (r) return { title: L(r.name), kcal: r.kcal, recipe: r, fodmap: 'low' };
   }
+  if (item?.my) {
+    const m = myMealById(item.my);
+    if (m) return { title: m.name, kcal: m.kcal || 0, recipe: null, fodmap: m.fodmap || 'low', mine: m };
+  }
   if (item?.food) return { title: item.food.title, kcal: item.food.kcal || 0, fodmap: item.food.fodmap || 'low', recipe: null };
-  return { title: '—', kcal: 0, recipe: null, fodmap: 'low' };
+  return { title: tr('Your choice', 'Du velger'), kcal: 0, recipe: null, fodmap: 'low', free: true };
 }
 
 export function dayStatus(key = dayKey()) {
@@ -149,12 +175,9 @@ export function nudgeNext(minutes = 30) {
 }
 
 // ---- Training ----
+// Your own plan if you made one, otherwise the built-in rhythm (js/training.js).
 export function plannedActivity(key = dayKey()) {
-  const type = WEEK_PLAN[weekday(key)];
-  if (type !== 'strength') return type;
-  const weekNo = Math.floor(dayNum(startOfWeek(key)) / 7);
-  const before = WEEK_PLAN.slice(0, weekday(key)).filter((t) => t === 'strength').length;
-  return (weekNo + before) % 2 === 0 ? 'strengthA' : 'strengthB';
+  return plannedFor(key);
 }
 
 export function workoutsOn(key) {
@@ -170,13 +193,19 @@ export function weekSummary(key = dayKey()) {
   const start = startOfWeek(key);
   let sessions = 0;
   let minutes = 0;
+  let watchMin = 0;
+  let watchKcal = 0;
   for (let i = 0; i < 7; i++) {
-    for (const w of workoutsOn(addDays(start, i))) {
+    const k = addDays(start, i);
+    for (const w of workoutsOn(k)) {
       sessions++;
       minutes += w.minutes || 0;
     }
+    const h = healthDay(k);
+    watchMin += h?.exerciseMin || 0;
+    watchKcal += h?.activeKcal || 0;
   }
-  return { sessions, minutes };
+  return { sessions, minutes, watchMin, watchKcal };
 }
 
 // Logged-but-unplanned meals still count toward kcal; this finds the slot a new log fits best.

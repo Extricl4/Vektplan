@@ -1,9 +1,10 @@
 import { S, mutate } from '../store.js';
-import { dayStatus, planFor, itemInfo } from '../planner.js';
+import { dayStatus, planFor, itemInfo, planSource, bestSlotFor } from '../planner.js';
 import { RECIPES, POOLS, GENTLE, recipeById } from '../data/recipes.js';
 import { tr, L, n0, kindName, dayShort, shortDate, unitName } from '../i18n.js';
-import { icon, plate, tabbar, toast } from '../ui.js';
-import { swapSheet } from '../meals.js';
+import { icon, plate, tabbar, toast, openSheet, closeSheet } from '../ui.js';
+import { swapSheet, portionButtons, cheer } from '../meals.js';
+import { myMeals, sortedMeals, myMealSheet, logMyMeal, kcalLine, WHEN, STOMACH } from '../mymeals.js';
 import { buildShopping } from '../data/shopping.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey, norm } from '../util.js';
 import { nav } from '../nav.js';
@@ -59,20 +60,50 @@ function planTab(selected) {
     return `<div class="item ${stateCls === 'now' ? 'now' : ''} ${state === 'done' ? 'done' : ''}">
       <span class="time">${x.time}</span>
       <span class="state ${stateCls}">${state === 'done' ? icon('check', 13, 'stroke-width="3.2"') : ''}</span>
-      <a class="grow" href="${r ? `#/recipe/${r.id}/${selected}/${x.slot.id}` : '#/food'}" style="color:inherit;text-decoration:none;min-width:0">
-        <span class="s" style="display:block">${sub}</span><span class="t" style="display:block">${esc(x.info.title)}</span></a>
+      <a class="grow" href="${r ? `#/recipe/${r.id}/${selected}/${x.slot.id}` : x.info.mine ? '#/food/mine' : '#/food'}" style="color:inherit;text-decoration:none;min-width:0">
+        <span class="s" style="display:block">${sub}${x.info.mine ? ` · ${tr('my food', 'min mat')}` : ''}</span><span class="t" style="display:block;${x.info.free && state !== 'done' ? 'color:var(--muted);font-weight:500' : ''}">${esc(state === 'done' && x.logs[0] ? x.logs.map((l) => l.title).join(', ') : x.info.title)}</span></a>
       ${state !== 'done' ? `<button class="icon-btn" style="width:38px;height:38px;background:transparent;color:var(--muted)" data-act="swap" data-slot="${x.slot.id}" aria-label="${tr('Swap', 'Bytt')} ${esc(x.info.title)}">${icon('swap', 18)}</button>` : ''}
     </div>`;
   }).join('');
   const snacks = [...new Set([...POOLS.snack, ...GENTLE])].map(recipeById).filter(Boolean);
-  return `${weekStrip(selected)}
+  return `${sourceRow()}${weekStrip(selected)}
     <section class="card" style="padding:6px 16px" aria-label="${tr('Meals', 'Måltider')}">
       <div class="list timeline">${rows || `<p class="small muted" style="padding:14px 0">${tr('No meal times are switched on.', 'Ingen måltider er slått på.')}</p>`}</div>
     </section>
     <div class="row between small muted" style="padding:0 4px">
-      <span>${tr('Tap ⇄ to swap anything', 'Trykk ⇄ for å bytte')}</span>${calm ? '' : `<span class="num">≈ ${n0(planned)} kcal ${tr('planned', 'planlagt')}</span>`}</div>
+      <span>${tr('Tap ⇄ to change anything', 'Trykk ⇄ for å endre')}</span>${calm ? '' : `<span class="num">≈ ${n0(planned)} kcal ${tr('planned', 'planlagt')}</span>`}</div>
     <div class="section-title"><h2 class="h2">${tr('Snack ideas', 'Mellommåltider')}</h2><a class="link-btn" href="#/food/recipes">${tr('All recipes', 'Alle oppskrifter')}</a></div>
     <div class="hscroll">${snacks.map((r) => recipeCard(r)).join('')}</div>`;
+}
+
+const SOURCES = [
+  ['mix', () => tr('A mix of my food and recipes', 'En miks av min mat og oppskrifter'), () => tr('Your own food on some meals, Vektplan ideas on others.', 'Din egen mat på noen måltider, Vektplan-forslag på andre.')],
+  ['mine', () => tr('Only my food', 'Bare min mat'), () => tr('Ideas come from the food you saved. Empty spots are your choice.', 'Forslagene kommer fra maten du har lagret. Tomme plasser velger du selv.')],
+  ['recipes', () => tr('Vektplan recipes', 'Vektplan-oppskrifter'), () => tr('Low-FODMAP recipes picked for each meal.', 'Lav-FODMAP-oppskrifter valgt til hvert måltid.')],
+  ['free', () => tr('Just meal times, I choose', 'Bare måltidstider, jeg velger'), () => tr('No ideas. The plan only keeps the rhythm.', 'Ingen forslag. Planen holder bare rytmen.')],
+];
+
+function sourceRow() {
+  const src = planSource();
+  const label = SOURCES.find(([k]) => k === src)?.[1]() || '';
+  return `<button class="item card tight" data-act="source" style="flex-direction:row;align-items:center;gap:10px;text-align:left">
+    <span class="plate-mini" style="width:36px;height:36px" aria-hidden="true">${icon('sparkle', 16)}</span>
+    <span class="grow"><span class="tiny muted" style="display:block">${tr('Meal ideas from', 'Måltidsforslag fra')}</span><span style="font-weight:600">${esc(label)}</span></span>${icon('chevD', 16)}</button>`;
+}
+
+function mineTab() {
+  const list = sortedMeals(myMeals());
+  const calm = S().prefs.calm;
+  const stomach = (k) => STOMACH.find(([x]) => x === k)?.[1]() || '';
+  return `<button class="btn primary" data-act="newMy">${icon('plus', 18)} ${tr('Add your own food', 'Legg til din egen mat')}</button>
+    ${list.length ? `<div class="col" style="gap:10px">${list.map((m) => `<section class="card tight">
+      <div class="row between top" style="gap:10px"><button class="grow" data-act="editMy" data-id="${m.id}" style="all:unset;cursor:pointer;min-width:0">
+        <span class="h3" style="display:block">${esc(m.name)}</span>
+        <span class="small muted">${[!calm ? kcalLine(m) : '', stomach(m.fodmap), (m.when || []).map((w) => WHEN.find(([k]) => k === w)?.[1]()).filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</span>
+        ${m.note ? `<span class="small soft" style="display:block;margin-top:4px">${esc(m.note)}</span>` : ''}</button>
+        <button class="btn tiny secondary" data-act="logMy" data-id="${m.id}">${icon('plus', 15)} ${tr('Log', 'Logg')}</button></div></section>`).join('')}</div>`
+      : `<div class="empty-state">${icon('heart', 30)}<p>${tr('Put the food you actually eat here: your usual breakfast, a dinner at home, a snack that sits well. Then you can log it in one tap, and the plan can suggest it.', 'Legg inn maten du faktisk spiser: den vanlige frokosten, middag hjemme, et mellommåltid som går fint. Da kan du logge med ett trykk, og planen kan foreslå den.')}</p></div>`}
+    <p class="tiny muted" style="margin:0 6px;line-height:1.5">${tr('Tip: when you log a meal, tap "Save this meal to My food" to keep it here.', 'Tips: når du logger et måltid, trykk «Lagre måltidet i Min mat» for å ha det her.')}</p>`;
 }
 
 export function recipeCard(r) {
@@ -161,15 +192,17 @@ export function render(ctx) {
   const [tab, arg] = ctx.params;
   if (tab === 'shop') return `<div class="screen">${shopTab()}</div>${tabbar('food')}`;
   const isRecipes = tab === 'recipes';
+  const isMine = tab === 'mine';
   const selected = tab === 'plan' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '') ? arg : dayKey();
   return `<div class="screen">
     <div class="blob b1"></div>
     <header class="head"><h1 class="h1">${tr('Food', 'Mat')}</h1>
       <a class="btn small secondary" href="#/food/shop">${icon('cart', 17)} ${tr('Shopping list', 'Handleliste')}</a></header>
     <div class="seg" role="tablist">
-      <a role="tab" href="#/food" aria-selected="${!isRecipes}">${tr('Meal plan', 'Måltidsplan')}</a>
+      <a role="tab" href="#/food" aria-selected="${!isRecipes && !isMine}">${tr('Plan', 'Plan')}</a>
+      <a role="tab" href="#/food/mine" aria-selected="${isMine}">${tr('My food', 'Min mat')}</a>
       <a role="tab" href="#/food/recipes" aria-selected="${isRecipes}">${tr('Recipes', 'Oppskrifter')}</a></div>
-    ${isRecipes ? recipesTab() : planTab(selected)}
+    ${isRecipes ? recipesTab() : isMine ? mineTab() : planTab(selected)}
   </div>${tabbar('food')}`;
 }
 
@@ -181,6 +214,46 @@ export const actions = {
     if (slot) swapSheet(key, slot);
   },
   cat: (el) => { cat = el.dataset.cat; nav.rerender(); },
+  source: () => {
+    const cur = S().prefs.planSource || 'auto';
+    const eff = planSource();
+    openSheet({
+      title: tr('Meal ideas from', 'Måltidsforslag fra'),
+      html: `<div class="col">${SOURCES.map(([k, name, sub]) => `<button class="choice" aria-pressed="${(cur === 'auto' ? eff : cur) === k}" data-act="pick" data-v="${k}" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span>${esc(name())}</span><span class="small soft" style="font-weight:400">${esc(sub())}</span></button>`).join('')}</div>
+        <p class="tiny muted">${tr('Meals you changed yourself stay as they are.', 'Måltider du har endret selv blir som de er.')}</p>`,
+      actions: {
+        pick: (b) => {
+          const v = b.dataset.v;
+          mutate((s) => { s.prefs.planSource = v; });
+          closeSheet();
+          if ((v === 'mine' || v === 'mix') && !myMeals().length) toast(tr('Add your own food in My food, and it shows up in the plan.', 'Legg inn din egen mat under Min mat, så dukker den opp i planen.'), 3600);
+          nav.rerender();
+        },
+      },
+    });
+  },
+  newMy: () => myMealSheet(null, { onSaved: () => nav.rerender() }),
+  editMy: (el) => {
+    const m = myMeals().find((x) => x.id === el.dataset.id);
+    if (m) myMealSheet(m, { onSaved: () => nav.rerender() });
+  },
+  logMy: (el) => {
+    const m = myMeals().find((x) => x.id === el.dataset.id);
+    if (!m) return;
+    openSheet({
+      title: esc(m.name),
+      html: `<p class="small muted">${tr('How much did you eat?', 'Hvor mye spiste du?')}</p>${portionButtons(1)}`,
+      actions: {
+        portion: (b) => {
+          logMyMeal(dayKey(), m, bestSlotFor(), Number(b.dataset.p));
+          closeSheet();
+          toast(cheer());
+          nav.rerender();
+        },
+      },
+    });
+  },
   quick: () => { quick = !quick; nav.rerender(); },
   rq: (el) => {
     const q = norm(el.value.trim());

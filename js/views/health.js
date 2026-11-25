@@ -1,13 +1,14 @@
 // Apple Watch screen: sync status, the last days of Watch data, and a step-by-step guide to the
 // Shortcut that reads Apple Health (web apps can't read HealthKit themselves).
-import { S } from '../store.js';
 import { tr, n0, shortDate, dayShort } from '../i18n.js';
 import { icon, toast, openSheet, closeSheet, confirmSheet } from '../ui.js';
 import { esc, dayKey, addDays, parseKey, clock } from '../util.js';
 import { nav } from '../nav.js';
 import {
   importHealth, readClipboard, looksLikeHealth, hasHealth, healthDay, lastSync, fmtSleep, fmtSleepShort, sleepWindow, clearHealth,
+  shortcutName, shortcutURL, markPending, takePending, KIND_LIST,
 } from '../health.js';
+import { S, mutate } from '../store.js';
 
 // ---------- Sync (shared with Today, Train and Settings) ----------
 function resultToast(res) {
@@ -49,6 +50,24 @@ export function pasteSheet(after) {
       },
     },
   });
+}
+
+// Coming back from the Shortcut: one tap brings the copied data in.
+export function bringInSheet() {
+  openSheet({
+    title: tr('Bring in your Watch data', 'Hent inn Watch-dataene'),
+    html: `<p class="small soft" style="line-height:1.5">${tr('The shortcut has copied your Health data. Tap below, then tap Paste if iPhone asks.', 'Snarveien har kopiert helsedataene dine. Trykk under, og trykk Lim inn hvis iPhonen spør.')}</p>
+      <button class="btn primary" data-act="go" style="min-height:56px">${icon('download', 18)} ${tr('Bring it in', 'Hent inn')}</button>
+      <button class="btn secondary" data-act="paste">${tr('Paste by hand instead', 'Lim inn selv i stedet')}</button>`,
+    actions: {
+      go: () => { closeSheet(true); syncHealth(); },
+      paste: () => { closeSheet(true); pasteSheet(() => nav.rerender()); },
+    },
+  });
+}
+
+export function checkReturn() {
+  if (takePending()) setTimeout(bringInSheet, 350);
 }
 
 export async function syncHealth(after = () => nav.rerender()) {
@@ -170,15 +189,19 @@ export function render() {
         <div class="grow"><p class="h3">${has ? tr('Connected through Shortcuts', 'Koblet til via Snarveier') : tr('Sleep, pulse and movement from your Watch', 'Søvn, puls og bevegelse fra klokka')}</p>
         <p class="small muted">${syncedText()}</p></div></div>
       ${has ? '' : `<p class="small soft" style="line-height:1.55">${tr('Vektplan can show your sleep, resting pulse, active calories, steps and exercise minutes, and look for links between sleep and your stomach. Apple only lets App Store apps read Health directly, so a small Shortcut does the reading and hands it over. Set it up once (about 5 minutes); after that it can run by itself every morning.', 'Vektplan kan vise søvn, hvilepuls, aktive kalorier, skritt og treningsminutter, og se etter sammenhenger mellom søvn og magen. Apple lar bare App Store-apper lese Helse direkte, så en liten snarvei gjør jobben og gir dataene videre. Sett den opp én gang (cirka 5 minutter), så kan den kjøre av seg selv hver morgen.')}</p>`}
-      <div class="btns"><button class="btn primary" data-act="sync">${icon('refresh', 18)} ${tr('Sync now', 'Hent nå')}</button>
+      <a class="btn primary" href="${esc(shortcutURL())}" data-act="run" style="min-height:54px">${icon('watch', 18)} ${tr('Get data from the Watch', 'Hent data fra klokka')}</a>
+      <p class="tiny muted" style="line-height:1.45">${tr(`Runs your "${esc(shortcutName())}" shortcut. Then tap "◀ Vektplan" in the top corner to come back, and tap Bring it in.`, `Kjører snarveien «${esc(shortcutName())}». Trykk så «◀ Vektplan» øverst i hjørnet for å komme tilbake, og trykk Hent inn.`)}</p>
+      <div class="btns"><button class="btn secondary" data-act="sync">${icon('download', 18)} ${tr('Bring it in', 'Hent inn')}</button>
         <button class="btn secondary" data-act="paste">${tr('Paste by hand', 'Lim inn selv')}</button></div>
     </section>
+    ${S().health?.lastKinds ? checklist() : ''}
 
     ${has ? `<section class="card"><h2 class="h3">${tr('The last 7 days', 'De siste 7 dagene')}</h2>${lastDays()}</section>` : ''}
 
     <section class="card">
       <h2 class="h2">${tr('Set it up once', 'Sett det opp én gang')}</h2>
       ${guide()}
+      <button class="item" data-act="renameShortcut" style="border-top:1px solid var(--line);padding-top:12px"><span class="grow"><span class="small muted" style="display:block">${tr('Your shortcut is called', 'Snarveien din heter')}</span><b>${esc(shortcutName())}</b></span>${icon('pencil', 16)}</button>
     </section>
 
     <section class="card">
@@ -196,8 +219,35 @@ export function render() {
   </div>`;
 }
 
+function checklist() {
+  const got = new Set(S().health?.lastKinds || []);
+  const missing = KIND_LIST.filter(([k]) => !got.has(k));
+  return `<section class="card" aria-label="${tr('What came through', 'Hva som kom med')}">
+    <h2 class="h3">${tr('What came through last time', 'Hva som kom med sist')}</h2>
+    <div class="chips">${KIND_LIST.map(([k, l]) => `<span class="chip ${got.has(k) ? 'on' : ''}" style="pointer-events:none">${got.has(k) ? icon('check', 14) : '–'} ${l()}</span>`).join('')}</div>
+    ${missing.length ? `<p class="tiny muted" style="line-height:1.5">${tr('Missing something? Check that type is in step 4 of the guide, and that Shortcuts may read it (Health app → your picture → Apps → Shortcuts). Weight only shows up if you log it in Health.', 'Mangler noe? Sjekk at typen er med i steg 4 i guiden, og at Snarveier får lese den (Helse-appen → bildet ditt → Apper → Snarveier). Vekt kommer bare med hvis du logger den i Helse.')}</p>` : ''}
+  </section>`;
+}
+
 export const actions = {
   back: () => nav.back('settings'),
+  run: () => { markPending(); location.href = shortcutURL(); },
+  renameShortcut: () => {
+    openSheet({
+      title: tr('Shortcut name', 'Navn på snarveien'),
+      html: `<div class="field"><label for="sc-name">${tr('Exactly as it is written in the Shortcuts app', 'Akkurat slik den står i Snarveier-appen')}</label>
+        <input id="sc-name" class="input" type="text" autocomplete="off" value="${esc(shortcutName())}"></div>
+        <button class="btn primary" data-act="ok">${tr('Save', 'Lagre')}</button>`,
+      actions: {
+        ok: (b, e, sheet) => {
+          const v = sheet.querySelector('#sc-name').value.trim();
+          mutate((st) => { st.prefs.shortcutName = v || 'Vektplan Health'; });
+          closeSheet();
+          nav.rerender();
+        },
+      },
+    });
+  },
   sync: () => syncHealth(),
   paste: () => pasteSheet(() => nav.rerender()),
   clear: async () => {

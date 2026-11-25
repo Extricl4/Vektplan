@@ -17,8 +17,12 @@ import * as coach from './views/coach.js';
 import * as settings from './views/settings.js';
 import * as setup from './views/setup.js';
 import * as health from './views/health.js';
+import { checkReturn } from './views/health.js';
+import * as plan from './views/plan.js';
+import * as session from './views/session.js';
+import * as fuel from './views/fuel.js';
 
-const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup, health };
+const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup, health, plan, session, fuel };
 const app = document.getElementById('app');
 
 let current = null;
@@ -119,8 +123,11 @@ window.addEventListener('hashchange', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && !sheetOpen() && !isTyping() && currentName !== 'log' && currentName !== 'coach') render();
+  if (document.visibilityState !== 'visible') return;
+  if (!sheetOpen() && !isTyping() && currentName !== 'log' && currentName !== 'coach') render();
+  checkReturn(); // back from the Apple Health shortcut?
 });
+window.addEventListener('pageshow', () => checkReturn());
 
 onUpdate((u) => {
   if ((u.status === 'ready' || u.status === 'available') && (currentName === 'today' || currentName === 'setup') && !sheetOpen() && !isTyping()) render();

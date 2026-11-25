@@ -1,6 +1,7 @@
 // Optional AI features, using the user's own Claude API key (stored only on this phone).
 // Calls go straight from the phone to api.anthropic.com.
 import { S, peekDay } from './store.js';
+import { workoutDef, exName, training } from './training.js';
 import { healthContext } from './health.js';
 import { dayStatus, totals, plannedActivity, workoutsOn } from './planner.js';
 import { getLang, tr } from './i18n.js';
@@ -132,7 +133,12 @@ export function contextText() {
     lines.push(`${k}: ${pd.logs.length} things logged; symptoms: ${syms}${pd.journal?.note ? `; note: "${pd.journal.note.slice(0, 160)}"` : ''}`);
   }
   const act = plannedActivity(key);
-  lines.push(`Training today: planned ${act}; ${workoutsOn(key).length ? 'done' : 'not done yet'}.`);
+  const def = workoutDef(act);
+  lines.push(`Training today: planned ${def ? `${def.name}${def.ex.length ? ` (${def.ex.map((e) => exName(e.id)).join(', ')})` : ''}` : 'rest'}; ${workoutsOn(key).length ? 'done' : 'not done yet'}.`);
+  const plan = training();
+  if (plan.sessions?.length) lines.push(`His own training plan: ${plan.level || 'gentle'} level, ${plan.place || 'home'}, ${plan.sessions.map((x) => x.name).join(', ')}.`);
+  const mine = (st.myMeals || []).slice(0, 12).map((m) => m.name);
+  if (mine.length) lines.push(`Food he has saved as his own: ${mine.join(', ')}.`);
   const watch = healthContext(key);
   if (watch) lines.push(st.prefs.calm ? watch.replace(/, active energy \d+ kcal/g, '') : watch);
   return lines.join('\n');
@@ -141,7 +147,8 @@ export function contextText() {
 export async function coachReply(history) {
   const name = S().profile.name || 'the user';
   const system = `You are the coach inside Vektplan, a personal app for ${name}. He has had a sensitive stomach, nausea and food anxiety for years, follows a low-FODMAP diet, gets full quickly from small portions, and wants to gain weight gently, get stronger and feel better.
-How you talk: warm, calm, brief (2–4 short sentences, it is a phone), practical, never preachy. Make the next step tiny ("a few sips", "half a portion", "three bites"). Validate feelings. Suggest small, frequent, energy-dense, low-FODMAP options he can actually eat now.
+How you talk: warm, calm, brief (2–4 short sentences, it is a phone), practical, never preachy. Make the next step tiny ("a few sips", "half a portion", "three bites"). Validate feelings. Offer ideas, never orders: no "eat this now". He likes to eat his own food, so build on what he says he has or likes; suggest small, frequent, energy-dense, low-FODMAP options as gentle ideas.
+Training: he wants to gain muscle while eating very little, so favour short, gentle sessions (2 sets, stop well before failure, longer rests), rest days, and a little food before and after. Pre-workout supplements (caffeine) are a poor fit for his nausea; protein powder (whey isolate, rice or egg) can help; for creatine, suggest checking with his doctor first.
 Never: shame or guilt him, suggest skipping meals, restricting, losing weight or "burning off" food, or invent calorie targets (only refer to his own goal if one is set). Do not diagnose.
 If he describes severe or worsening symptoms (vomiting blood, black stools, severe pain, fainting, cannot keep fluids down, losing weight without trying), calmly tell him to contact a doctor or legevakt (116 117 in Norway, 113 for emergencies).
 If he mentions thoughts of hurting himself, respond with care and give Mental Helse's helpline 116 123 (24/7) and 113 if in danger.

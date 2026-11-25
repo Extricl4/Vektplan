@@ -68,15 +68,16 @@ function localReply(intent) {
       if (current && current.state === 'next') {
         const r = pickSnack();
         return {
-          text: tr(`Your next meal is ${kindName(current.slot.kind).toLowerCase()} at ${current.time}. Hungry before that? Have a small snack now: ${L(r.name).toLowerCase()}. ${r.min ? `${r.min} minutes.` : 'No cooking.'}`, `Neste måltid er ${kindName(current.slot.kind).toLowerCase()} kl. ${current.time}. Sulten før det? Ta et lite mellommåltid nå: ${L(r.name).toLowerCase()}. ${r.min ? `${r.min} minutter.` : 'Ingen matlaging.'}`),
+          text: tr(`Your next meal is ${kindName(current.slot.kind).toLowerCase()} around ${current.time}. If you feel peckish before that, ${L(r.name).toLowerCase()} is an easy one${r.min ? ` (${r.min} minutes)` : ''}. Or anything of your own you like.`, `Neste måltid er ${kindName(current.slot.kind).toLowerCase()} rundt kl. ${current.time}. Kjenner du deg litt sulten før det, er ${L(r.name).toLowerCase()} en lett en${r.min ? ` (${r.min} minutter)` : ''}. Eller noe eget du liker.`),
           action: `recipe:${r.id}`,
         };
       }
       if (current) {
         const alt = pickSnack();
-        const when = current.state === 'now' ? tr('Right now', 'Akkurat nå') : tr(`At ${current.time}`, `Kl. ${current.time}`);
+        const idea = current.info.free ? tr('whatever you feel like', 'det du har lyst på') : current.info.title;
+        const when = current.state === 'now' ? tr(`Around now, ${kindName(current.slot.kind).toLowerCase()}`, `Rundt nå, ${kindName(current.slot.kind).toLowerCase()}`) : tr(`Around ${current.time}`, `Rundt kl. ${current.time}`);
         return {
-          text: tr(`${when}: ${current.info.title}. If that feels like too much, half a portion is great, or try ${L(alt.name).toLowerCase()} instead. Start with a few bites and see how it feels.`, `${when}: ${current.info.title}. Føles det som mye, er en halv porsjon kjempebra, eller prøv ${L(alt.name).toLowerCase()} i stedet. Start med noen biter og kjenn etter.`),
+          text: tr(`${when}. One idea: ${idea}. Your own food works just as well, and half a portion or a few bites still count. ${L(alt.name)} is a light option if you want something small.`, `${when}. Et forslag: ${idea}. Din egen mat funker like bra, og en halv porsjon eller noen biter teller. ${L(alt.name)} er et lett alternativ hvis du vil ha noe lite.`),
           action: 'today',
         };
       }

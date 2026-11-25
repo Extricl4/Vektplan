@@ -297,6 +297,7 @@ export function importHealth(text) {
     for (const k of Object.keys(s.health.days)) if (k < cutoff) delete s.health.days[k];
     s.health.lastSync = Date.now();
     s.health.lastCount = p.used;
+    s.health.lastKinds = p.kinds;
     s.health.setup = true;
   });
   // Weigh-ins from a scale or the Health app, only for days without one in Vektplan.
@@ -321,6 +322,32 @@ export const syncedToday = () => {
   const t = lastSync();
   return !!t && dayKey(new Date(t)) === dayKey();
 };
+
+// The Shortcut can be started straight from Vektplan. iOS then shows "◀ Vektplan" in the corner
+// to come back, and Vektplan offers to bring the data in (reading the clipboard needs a tap).
+export const shortcutName = () => S().prefs.shortcutName || 'Vektplan Health';
+export const shortcutURL = () => `shortcuts://run-shortcut?name=${encodeURIComponent(shortcutName())}`;
+const PENDING_KEY = 'vektplan.healthPending';
+export function markPending() {
+  try { sessionStorage.setItem(PENDING_KEY, String(Date.now())); } catch (e) { /* private mode */ }
+  try { localStorage.setItem(PENDING_KEY, String(Date.now())); } catch (e) { /* ignore */ }
+}
+export function takePending() {
+  let t = 0;
+  try { t = Number(localStorage.getItem(PENDING_KEY)) || 0; localStorage.removeItem(PENDING_KEY); } catch (e) { /* ignore */ }
+  try { sessionStorage.removeItem(PENDING_KEY); } catch (e) { /* ignore */ }
+  return t && Date.now() - t < 15 * 60 * 1000;
+}
+
+export const KIND_LIST = [
+  ['sleep', () => tr('Sleep', 'Søvn')],
+  ['restingHR', () => tr('Resting pulse', 'Hvilepuls')],
+  ['hrv', () => tr('Heart rate variability', 'Pulsvariasjon')],
+  ['active', () => tr('Active calories', 'Aktive kalorier')],
+  ['steps', () => tr('Steps', 'Skritt')],
+  ['exercise', () => tr('Exercise minutes', 'Treningsminutter')],
+  ['weight', () => tr('Weight', 'Vekt')],
+];
 
 export async function readClipboard() {
   if (!navigator.clipboard?.readText) throw new Error('noclip');

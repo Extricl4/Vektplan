@@ -27,10 +27,20 @@ The page never scrolls: `#app` is a full-height flex column, each `.screen` scro
 (iOS 26 home-screen apps misplace fixed bars after the keyboard). Use `nav.scrollTo(y)` / `nav.scroller()`.
 Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
 
+## Food and training
+- Own food lives in `myMeals` (`js/mymeals.js`). `prefs.planSource` picks where meal ideas come from: auto/mix/mine/recipes/free.
+  Plan items are `{ rid }` (recipe), `{ my }` (own food), `{ food }` or `{ free: true }`. Today shows ideas, never orders.
+- Training plans are in `training` (`js/training.js`): sessions with `{ id, sets, reps }`, `schedule[weekday] = sessionId`,
+  `extras[weekday] = 'walk'|'stretch'`. Empty `training.sessions` = the built-in Strength A/B rhythm.
+  `workoutDef(id)` gives one shape for own sessions, built-in ones and walks. Workouts save `log[exId] = [{ r, kg }]`.
+- Default level is "gentle" (he eats very little): 2 sets, max 5 exercises, 90 s rest, no heavy barbell lifts auto-picked,
+  nothing that presses on the stomach (crunches, leg raises) auto-picked.
+
 ## Apple Watch
 Web apps can't read HealthKit. A Shortcut (guide in `js/views/health.js`) copies Health samples as
 `Type;Start;End;Value;Unit` lines; `js/health.js` parses them (English/Norwegian names, ISO or default
 dates) into `health.days[YYYY-MM-DD]`. Sleep counts for the day you wake up.
+"Get data from the Watch" opens `shortcuts://run-shortcut?name=…`; coming back offers "Bring it in" (clipboard needs a tap).
 
 ## Data
 All user data is in `localStorage['vektplan.v1']` (see `js/store.js`). Keep changes backward compatible:

@@ -1,56 +1,89 @@
+// Workout runner: one exercise at a time, reps and weight per set, what you did last time,
+// rest timer, swap or add exercises on the fly, and a calm summary with refuel ideas at the end.
 import { S, mutate } from '../store.js';
-import { WORKOUTS, EXERCISES } from '../data/workouts.js';
-import { tr, L } from '../i18n.js';
-import { icon, toast, confirmSheet } from '../ui.js';
-import { saveWorkout, activityName } from './train.js';
-import { esc, pad } from '../util.js';
+import { tr, L, n1, shortDate } from '../i18n.js';
+import { icon, toast, confirmSheet, openSheet, closeSheet } from '../ui.js';
+import { workoutDef, getEx, exName, groupName, lastLog, progressHint, alternatives, restSeconds, saveWorkout, activityName, newBests, kgFmt } from '../training.js';
+import { weighted, kgStep } from '../data/exercises.js';
+import { esc, parseKey, dayKey } from '../util.js';
 import { nav } from '../nav.js';
+import { exercisePicker } from './session.js';
+import { refuelSheet } from './fuel.js';
 
 let tick = null;
 let rest = null; // { until, total }
 let countdown = null; // { until, total }
-const lastValue = {};
+const lastValue = {}; // reps/seconds you last chose per exercise (this session)
+const lastKg = {};
 
 // Minutes for a strength session. If it was left open (phone locked, forgot to finish),
 // count about 3 minutes per set instead of the hours since it started.
-function sessionMinutes(a) {
-  const sets = Object.values(a.sets).reduce((n, arr) => n + arr.length, 0);
-  const elapsed = (Date.now() - a.started) / 60000;
-  return elapsed > 120 ? Math.max(5, Math.min(90, sets * 3)) : elapsed;
+function setCount(a) {
+  return Object.values(a.sets || {}).reduce((n, arr) => n + arr.length, 0);
 }
-
+function sessionMinutes(a) {
+  const elapsed = (Date.now() - a.started) / 60000;
+  return elapsed > 120 ? Math.max(5, Math.min(90, setCount(a) * 3)) : elapsed;
+}
+function walkElapsed(a) {
+  return (a.walkMs || 0) + (a.walkStart ? Date.now() - a.walkStart : 0);
+}
 function walkMinutes(a) {
   const m = walkElapsed(a) / 60000;
   return m > 300 ? 60 : m;
 }
+function listOf(a) {
+  if (Array.isArray(a.list) && a.list.length) return a.list;
+  return workoutDef(a.id)?.ex || [];
+}
+function buildLog(a) {
+  const log = {};
+  for (const [exId, reps] of Object.entries(a.sets || {})) {
+    if (!reps.length) continue;
+    log[exId] = reps.map((r, i) => {
+      const kg = a.kg?.[exId]?.[i];
+      return kg ? { r, kg } : { r };
+    });
+  }
+  return log;
+}
+
+function saveActive(a, quiet = false) {
+  if (a.id === 'walk') {
+    saveWorkout('walk', Math.max(1, walkMinutes(a)));
+    return null;
+  }
+  const log = buildLog(a);
+  const ts = Date.now();
+  const bests = newBests(log, ts);
+  saveWorkout(a.id, sessionMinutes(a), setCount(a), Object.keys(log).length ? { log } : {});
+  return quiet ? null : { minutes: Math.max(1, Math.round(sessionMinutes(a))), sets: setCount(a), bests, exercises: Object.keys(log).length };
+}
 
 export function enter(ctx) {
   const id = ctx.params[0];
-  if (!WORKOUTS[id]) return;
+  const def = workoutDef(id);
+  if (!def) return;
   const a = S().activeWorkout;
   if (a && a.id !== id) {
     // Starting something else: keep what was already done in the other session.
-    const sets = Object.values(a.sets || {}).reduce((n, arr) => n + arr.length, 0);
-    if (a.id === 'walk' ? walkElapsed(a) >= 60000 : sets > 0) {
-      if (a.id === 'walk') saveWorkout('walk', Math.max(1, walkMinutes(a)));
-      else saveWorkout(a.id, sessionMinutes(a), sets);
+    if (a.id === 'walk' ? walkElapsed(a) >= 60000 : setCount(a) > 0) {
+      saveActive(a, true);
       toast(tr(`Saved your ${activityName(a.id)} first.`, `Lagret ${activityName(a.id)} først.`), 2600);
     }
   }
   if (!a || a.id !== id) {
-    mutate((s) => { s.activeWorkout = { id, started: Date.now(), ex: 0, sets: {}, walkStart: null, walkMs: 0 }; });
+    rest = null;
+    countdown = null;
+    mutate((s) => {
+      s.activeWorkout = { id, started: Date.now(), ex: 0, list: def.ex.map((e) => ({ ...e })), sets: {}, kg: {}, walkStart: null, walkMs: 0 };
+    });
   }
-  rest = null;
-  countdown = null;
 }
 
 function mmss(ms) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${pad(s % 60)}`;
-}
-
-function walkElapsed(a) {
-  return a.walkMs + (a.walkStart ? Date.now() - a.walkStart : 0);
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function walkView(a) {
@@ -69,58 +102,101 @@ function walkView(a) {
   </div>`;
 }
 
+function kgText(kg) {
+  return kg ? kgFmt(kg) : tr('body weight', 'kroppsvekt');
+}
+
+function lastTimeLine(exId, isTime) {
+  const last = lastLog(exId);
+  if (!last) return '';
+  const reps = last.sets.map((x) => x.r).join(' · ');
+  const kgs = last.sets.map((x) => x.kg || 0);
+  const top = Math.max(0, ...kgs);
+  const when = last.date === dayKey() ? tr('earlier today', 'tidligere i dag') : shortDate(parseKey(last.date));
+  return `<p class="small soft">${icon('clock', 14, 'style="vertical-align:-2px"')} ${tr('Last time', 'Sist')} (${when}): <b class="num">${reps}</b> ${isTime ? 's' : tr('reps', 'reps')}${top ? ` · ${tr('up to', 'opptil')} <b class="num">${kgFmt(top)}</b>` : ''}</p>`;
+}
+
 function exerciseView(a) {
-  const w = WORKOUTS[a.id];
-  const exId = w.ex[a.ex];
-  const ex = EXERCISES[exId];
-  const sets = a.sets[exId] || [];
+  const def = workoutDef(a.id);
+  const list = listOf(a);
+  const idx = Math.min(a.ex, list.length - 1);
+  const item = list[idx];
+  if (!item) return emptyView(a, def);
+  const exId = item.id;
+  const ex = getEx(exId) || { name: { en: exId, nb: exId }, groups: [], mode: 'reps', def: 10, cue: { en: '', nb: '' }, equip: ['none'] };
+  const sets = a.sets?.[exId] || [];
+  const kgs = a.kg?.[exId] || [];
   const isTime = ex.mode === 'time';
-  const value = lastValue[exId] ?? ex.def;
+  const target = { sets: item.sets || 3, reps: item.reps || ex.def };
+  const value = lastValue[exId] ?? target.reps;
+  const wantsKg = weighted(ex);
+  const hint = wantsKg ? progressHint(exId, target) : null;
+  const lastTop = Math.max(0, ...(lastLog(exId)?.sets || []).map((x) => x.kg || 0));
+  const kg = lastKg[exId] ?? (kgs.length ? kgs[kgs.length - 1] : lastTop || 0);
   const mins = Math.max(1, Math.round((Date.now() - a.started) / 60000));
-  const last = a.ex === w.ex.length - 1;
-  const restSec = w.kind === 'mobility' ? 0 : S().prefs.restSec || 60;
+  const isLast = idx === list.length - 1;
+  const mobility = def.kind === 'mobility';
+  const goalMet = sets.length >= target.sets;
   return `<div class="screen no-tabs">
     <header class="col" style="gap:12px">
       <div class="row"><button class="icon-btn surface" data-act="leave" aria-label="${tr('Close', 'Lukk')}">${icon('x', 20)}</button>
-        <div class="grow"><h1 class="h2">${esc(L(w.name))}</h1><p class="small muted">${tr('Exercise', 'Øvelse')} ${a.ex + 1} ${tr('of', 'av')} ${w.ex.length} · ${mins} min</p></div></div>
-      <div class="meals-bar">${w.ex.map((id, i) => `<span class="${i < a.ex || (a.sets[id] || []).length ? 'done' : i === a.ex ? 'now' : ''}"></span>`).join('')}</div>
+        <div class="grow"><h1 class="h2">${esc(def.name)}</h1><p class="small muted">${tr('Exercise', 'Øvelse')} ${idx + 1} ${tr('of', 'av')} ${list.length} · ${mins} min</p></div>
+        <button class="icon-btn surface" data-act="overview" aria-label="${tr('All exercises', 'Alle øvelser')}">${icon('list', 20)}</button></div>
+      <div class="meals-bar">${list.map((e, i) => `<span class="${(a.sets?.[e.id] || []).length >= (e.sets || 1) ? 'done' : i === idx ? 'now' : ''}"></span>`).join('')}</div>
     </header>
     <section class="card">
-      <div class="ex-visual">${icon(w.kind === 'mobility' ? 'stretch' : 'dumbbell', 52)}</div>
-      <div><p class="small muted">${esc(L(ex.area))}</p><h2 class="h1" style="font-size:25px">${esc(L(ex.name))}</h2></div>
-      <p class="soft" style="line-height:1.55">${esc(L(ex.cue))}</p>
+      <div class="row between top"><div class="grow"><p class="small muted">${esc((ex.groups || []).slice(0, 2).map(groupName).join(' · '))}</p>
+        <h2 class="h1" style="font-size:25px">${esc(L(ex.name))}</h2></div>
+        ${mobility ? '' : `<button class="btn tiny secondary" data-act="swap">${icon('swap', 15)} ${tr('Swap', 'Bytt')}</button>`}</div>
+      ${L(ex.cue) ? `<p class="soft" style="line-height:1.55">${esc(L(ex.cue))}</p>` : ''}
+      <div class="row wrap" style="gap:6px"><span class="badge accent">${tr('Goal', 'Mål')}: ${target.sets} × ${target.reps}${isTime ? ' s' : ''}</span>
+        ${wantsKg && lastTop ? `<span class="badge num">${tr('Best', 'Beste')} ${kgFmt(lastTop)}</span>` : ''}</div>
+      ${lastTimeLine(exId, isTime)}
+      ${hint ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:6px"><span>${tr(`Every set hit the goal last time. Want to try ${kgFmt(hint.kg)}? Only if it feels good.`, `Alle settene nådde målet sist. Vil du prøve ${kgFmt(hint.kg)}? Bare hvis det føles bra.`)}</span>
+        <button class="btn tiny secondary" style="align-self:flex-start" data-act="useKg" data-kg="${hint.kg}">${tr(`Use ${kgFmt(hint.kg)}`, `Bruk ${kgFmt(hint.kg)}`)}</button></div></div>` : ''}
     </section>
     <section class="card" aria-label="${tr('Sets', 'Sett')}">
-      <div class="row between"><h2 class="h3">${sets.length ? `${sets.length} ${sets.length === 1 ? tr('set done', 'sett gjort') : tr('sets done', 'sett gjort')}` : tr('Log your first set', 'Logg første sett')}</h2>
-        <span class="small muted">${tr('Easy pace, 2–3 sets', 'Rolig tempo, 2–3 sett')}</span></div>
-      ${sets.length ? `<div class="sets">${sets.map((v, i) => `<div class="set"><span class="n">${i + 1}</span><span class="grow">${isTime ? `${v} s` : `${v} ${tr('reps', 'reps')}`}</span>
+      <div class="row between"><h2 class="h3">${sets.length ? `${sets.length} ${tr('of', 'av')} ${target.sets} ${tr('sets', 'sett')}` : tr('Log your first set', 'Logg første sett')}</h2>
+        <span class="small muted">${tr('Stop 2–3 reps before it gets hard', 'Stopp 2–3 reps før det blir tungt')}</span></div>
+      ${sets.length ? `<div class="sets">${sets.map((v, i) => `<div class="set"><span class="n">${i + 1}</span><span class="grow num">${isTime ? `${v} s` : `${v} ${tr('reps', 'reps')}`}${wantsKg ? ` · ${kgText(kgs[i])}` : ''}</span>
         <button class="icon-btn" style="width:34px;height:34px;background:transparent" data-act="unset" data-i="${i}" aria-label="${tr('Remove set', 'Fjern sett')}">${icon('x', 16)}</button></div>`).join('')}</div>` : ''}
-      <div class="row between"><span class="small muted">${isTime ? tr('Seconds', 'Sekunder') : tr('Reps you did', 'Antall du tok')}</span>
+      <div class="row between"><span class="small muted">${isTime ? tr('Seconds', 'Sekunder') : tr('Reps', 'Reps')}</span>
         <div class="stepper"><button data-act="val" data-d="${isTime ? -5 : -1}" aria-label="${tr('Less', 'Mindre')}">−</button>
         <span class="v num" style="font-size:20px">${value}</span>
         <button data-act="val" data-d="${isTime ? 5 : 1}" aria-label="${tr('More', 'Mer')}">+</button></div></div>
-      ${isTime ? `<div class="btns"><button class="btn primary" data-act="countdown">${icon('clock', 18)} ${countdown ? `<span id="cd-v">${mmss(countdown.until - Date.now())}</span>` : `${tr('Start', 'Start')} ${value} s`}</button>
+      ${wantsKg ? `<div class="row between"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+        <div class="stepper"><button data-act="kg" data-d="${-kgStep(ex)}" aria-label="${tr('Lighter', 'Lettere')}">−</button>
+        <span class="v num kgv" role="button" tabindex="0" data-act="kgType" style="font-size:20px;min-width:80px" aria-label="${tr('Type the weight', 'Skriv inn vekten')}">${kg ? kgFmt(kg) : '– kg'}</span>
+        <button data-act="kg" data-d="${kgStep(ex)}" aria-label="${tr('Heavier', 'Tyngre')}">+</button></div></div>` : ''}
+      ${isTime ? `<div class="btns"><button class="btn ${goalMet ? 'secondary' : 'primary'}" data-act="countdown">${icon('clock', 18)} ${countdown ? `<span id="cd-v">${mmss(countdown.until - Date.now())}</span>` : `${tr('Start', 'Start')} ${value} s`}</button>
           <button class="btn secondary" data-act="logset">${tr('Log it', 'Logg')}</button></div>`
-        : `<button class="btn primary" data-act="logset">${icon('check', 18)} ${tr('Log set', 'Logg sett')}</button>`}
+        : `<button class="btn ${goalMet ? 'secondary' : 'primary'}" data-act="logset">${icon('check', 18)} ${goalMet ? tr('Log an extra set', 'Logg et ekstra sett') : tr('Log set', 'Logg sett')}</button>`}
     </section>
     ${rest ? `<div class="card tight" style="flex-direction:row;align-items:center;gap:12px">
       <div class="timer-ring"><svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="23" fill="none" stroke="var(--surface2)" stroke-width="5"/>
         <circle id="rest-ring" cx="28" cy="28" r="23" fill="none" stroke="var(--accent-line)" stroke-width="5" stroke-linecap="round" stroke-dasharray="144.5" stroke-dashoffset="0"/></svg>
         <span class="v" id="rest-v">${mmss(rest.until - Date.now())}</span></div>
       <div class="grow"><p class="h3">${tr('Rest', 'Pause')}</p><p class="small muted">${tr('Breathe. Sip some water.', 'Pust. Ta en slurk vann.')}</p></div>
-      <button class="btn tiny secondary" data-act="skipRest">${tr('Skip', 'Hopp over')}</button></div>` : ''}
+      <div class="col" style="gap:6px"><button class="btn tiny secondary" data-act="restPlus">+15 s</button><button class="btn tiny secondary" data-act="skipRest">${tr('Skip', 'Hopp over')}</button></div></div>` : ''}
+    ${goalMet && !rest && !isLast ? `<div class="note">${icon('check', 18)}<span>${tr('Goal reached for this one. On to the next when you are ready.', 'Målet er nådd for denne. Videre til neste når du er klar.')}</span></div>` : ''}
     <div class="btns">
-      <button class="btn secondary" data-act="prev" ${a.ex === 0 ? 'disabled' : ''}>${icon('chevL', 18)} ${tr('Back', 'Tilbake')}</button>
-      ${last ? `<button class="btn primary" data-act="finish">${icon('check', 18)} ${tr('Finish', 'Ferdig')}</button>`
-        : `<button class="btn primary" data-act="next">${tr('Next', 'Neste')} ${icon('chevR', 18)}</button>`}</div>
-    <button class="link-btn" style="align-self:center" data-act="finish">${tr('Feeling sick? End here. It still counts.', 'Kvalm? Avslutt her. Det teller likevel.')}</button>
-    <input type="hidden" id="rest-sec" value="${restSec}">
+      <button class="btn secondary" data-act="prev" ${idx === 0 ? 'disabled' : ''}>${icon('chevL', 18)} ${tr('Back', 'Tilbake')}</button>
+      ${isLast ? `<button class="btn primary" data-act="finish">${icon('check', 18)} ${tr('Finish', 'Ferdig')}</button>`
+        : `<button class="btn ${goalMet ? 'primary' : 'secondary'}" data-act="next">${tr('Next', 'Neste')} ${icon('chevR', 18)}</button>`}</div>
+    <button class="link-btn" style="align-self:center" data-act="finish">${tr('Feeling sick or tired? End here. It still counts.', 'Kvalm eller sliten? Avslutt her. Det teller likevel.')}</button>
   </div>`;
+}
+
+function emptyView(a, def) {
+  return `<div class="screen no-tabs">
+    <header class="head"><button class="icon-btn surface" data-act="leave" aria-label="${tr('Close', 'Lukk')}">${icon('x', 20)}</button><h1 class="h2 grow">${esc(def.name)}</h1></header>
+    <section class="card"><p class="soft">${tr('This session has no exercises yet.', 'Denne økten har ingen øvelser ennå.')}</p>
+      <button class="btn primary" data-act="addEx">${icon('plus', 18)} ${tr('Add an exercise', 'Legg til en øvelse')}</button></section></div>`;
 }
 
 export function render(ctx) {
   const a = S().activeWorkout;
-  if (!a || !WORKOUTS[a.id] || a.id !== ctx.params[0]) {
+  if (!a || !workoutDef(a.id) || a.id !== ctx.params[0]) {
     return `<div class="screen no-tabs"><p>${tr('No workout running.', 'Ingen økt pågår.')}</p><a class="btn primary" href="#/train">${tr('Back to training', 'Til trening')}</a></div>`;
   }
   return a.id === 'walk' ? walkView(a) : exerciseView(a);
@@ -144,6 +220,7 @@ function startTick() {
       if (ringEl) ringEl.setAttribute('stroke-dashoffset', String(144.5 * (1 - Math.max(0, left) / rest.total)));
       if (left <= 0) {
         rest = null;
+        try { navigator.vibrate?.(200); } catch (e) { /* not on iOS */ }
         toast(tr('Rest done. Next set when you are ready.', 'Pausen er over. Neste sett når du er klar.'));
         nav.rerender();
       }
@@ -171,18 +248,26 @@ export function unmount() {
 
 function current() {
   const a = S().activeWorkout;
-  const w = WORKOUTS[a.id];
-  return { a, w, exId: w.ex[a.ex], ex: EXERCISES[w.ex[a.ex]] };
+  const list = listOf(a);
+  const idx = Math.min(a.ex, list.length - 1);
+  const item = list[idx];
+  return { a, def: workoutDef(a.id), list, idx, item, exId: item?.id, ex: getEx(item?.id) };
 }
 
 function logSet() {
-  const { exId, ex, w } = current();
-  const value = lastValue[exId] ?? ex.def;
+  const { exId, ex, item, def } = current();
+  if (!exId) return;
+  const value = lastValue[exId] ?? item.reps ?? ex?.def ?? 10;
+  const kgs = S().activeWorkout.kg?.[exId] || [];
+  const lastTop = Math.max(0, ...(lastLog(exId)?.sets || []).map((x) => x.kg || 0));
+  const kg = weighted(ex) ? lastKg[exId] ?? (kgs.length ? kgs[kgs.length - 1] : lastTop || 0) : 0;
   mutate((s) => {
-    const sets = (s.activeWorkout.sets[exId] ||= []);
-    sets.push(value);
+    const a = s.activeWorkout;
+    (a.sets[exId] ||= []).push(value);
+    a.kg ||= {};
+    (a.kg[exId] ||= []).push(kg || 0);
   });
-  const restSec = w.kind === 'mobility' ? 0 : S().prefs.restSec || 60;
+  const restSec = def.kind === 'mobility' ? 0 : restSeconds();
   if (restSec) rest = { until: Date.now() + restSec * 1000, total: restSec * 1000 };
   nav.rerender();
 }
@@ -190,47 +275,163 @@ function logSet() {
 function finish() {
   const a = S().activeWorkout;
   if (!a) return;
-  if (a.id === 'walk') {
-    saveWorkout('walk', Math.max(1, walkMinutes(a)));
-  } else {
-    const sets = Object.values(a.sets).reduce((n, arr) => n + arr.length, 0);
-    saveWorkout(a.id, sessionMinutes(a), sets);
-  }
+  const summary = saveActive(a);
   mutate((s) => { s.activeWorkout = null; });
   rest = null;
   countdown = null;
-  const name = S().profile.name ? `, ${S().profile.name}` : '';
-  toast(tr(`Saved. Well done${name}! Have a snack soon.`, `Lagret. Bra jobba${name}! Spis litt snart.`), 3200);
   nav.go('train');
+  setTimeout(() => refuelSheet(summary), 120);
+}
+
+function overviewSheet() {
+  const a = S().activeWorkout;
+  const list = listOf(a);
+  openSheet({
+    title: tr('Exercises', 'Øvelser'),
+    html: `<div class="list">${list.map((e, i) => {
+      const done = (a.sets?.[e.id] || []).length;
+      return `<button class="item" data-act="jump" data-i="${i}"><span class="n num" style="width:26px;font-weight:700;color:${i === a.ex ? 'var(--accent)' : 'var(--muted)'}">${i + 1}</span>
+        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(exName(e.id))}</span><span class="s">${e.sets} × ${e.reps}</span></span>
+        <span class="small num ${done >= e.sets ? '' : 'muted'}" style="${done >= e.sets ? 'color:var(--accent);font-weight:700' : ''}">${done}/${e.sets}${done >= e.sets ? ' ✓' : ''}</span></button>`;
+    }).join('')}</div>
+      <button class="btn outline" data-act="add">${icon('plus', 18)} ${tr('Add an exercise to this workout', 'Legg til en øvelse i økten')}</button>`,
+    actions: {
+      jump: (el) => {
+        const i = Number(el.dataset.i);
+        rest = null;
+        countdown = null;
+        mutate((s) => { s.activeWorkout.ex = i; });
+        closeSheet(true);
+        nav.rerender();
+        nav.scrollTo(0);
+      },
+      add: () => { closeSheet(true); addExercise(); },
+    },
+  });
+}
+
+function addExercise() {
+  exercisePicker({
+    title: tr('Add to this workout', 'Legg til i økten'),
+    onPick: (id) => {
+      const ex = getEx(id);
+      mutate((s) => {
+        const a = s.activeWorkout;
+        a.list = listOf(a).map((e) => ({ ...e }));
+        a.list.push({ id, sets: 2, reps: ex?.def || 10 });
+        a.ex = a.list.length - 1;
+      });
+      toast(tr('Added.', 'Lagt til.'));
+      nav.rerender();
+    },
+  });
+}
+
+function swapSheet() {
+  const { exId, idx } = current();
+  const alts = alternatives(exId).slice(0, 12);
+  openSheet({
+    title: tr('Swap for today', 'Bytt for i dag'),
+    html: `<p class="small soft">${tr('Same muscles, different exercise. Your plan stays as it is.', 'Samme muskler, annen øvelse. Planen din blir som den er.')}</p>
+      ${alts.length ? `<div class="list">${alts.map((id) => `<button class="item" data-act="pick" data-id="${id}"><span class="grow"><span class="t" style="display:block;font-weight:500">${esc(exName(id))}</span>
+        <span class="s">${esc(getEx(id).groups.slice(0, 2).map(groupName).join(' · '))}</span></span>${icon('chevR', 16)}</button>`).join('')}</div>`
+        : `<p class="small muted">${tr('No other exercises for these muscles with your equipment.', 'Ingen andre øvelser for disse musklene med utstyret ditt.')}</p>`}
+      <button class="btn outline" data-act="any">${tr('Pick any exercise', 'Velg en hvilken som helst øvelse')}</button>`,
+    actions: {
+      pick: (el) => { doSwap(idx, el.dataset.id); closeSheet(); },
+      any: () => {
+        closeSheet(true);
+        exercisePicker({ title: tr('Swap for today', 'Bytt for i dag'), onPick: (id) => doSwap(idx, id) });
+      },
+    },
+  });
+}
+
+function doSwap(idx, id) {
+  const ex = getEx(id);
+  mutate((s) => {
+    const a = s.activeWorkout;
+    a.list = listOf(a).map((e) => ({ ...e }));
+    a.list[idx] = { id, sets: a.list[idx].sets, reps: ex?.def || a.list[idx].reps };
+  });
+  rest = null;
+  countdown = null;
+  toast(tr(`Swapped to ${exName(id)}.`, `Byttet til ${exName(id)}.`));
+  nav.rerender();
 }
 
 export const actions = {
   leave: () => nav.go('train'),
+  overview: () => overviewSheet(),
+  addEx: () => addExercise(),
+  swap: () => swapSheet(),
   val: (el) => {
-    const { exId, ex } = current();
-    const cur = lastValue[exId] ?? ex.def;
+    const { exId, ex, item } = current();
+    const cur = lastValue[exId] ?? item.reps ?? ex.def;
     lastValue[exId] = Math.max(1, Math.min(ex.mode === 'time' ? 600 : 100, cur + Number(el.dataset.d)));
+    nav.rerender();
+  },
+  kg: (el) => {
+    const { exId, a } = current();
+    const kgs = a.kg?.[exId] || [];
+    const lastTop = Math.max(0, ...(lastLog(exId)?.sets || []).map((x) => x.kg || 0));
+    const cur = lastKg[exId] ?? (kgs.length ? kgs[kgs.length - 1] : lastTop || 0);
+    lastKg[exId] = Math.max(0, Math.min(400, Math.round((cur + Number(el.dataset.d)) * 10) / 10));
+    nav.rerender();
+  },
+  kgType: () => {
+    const { exId, ex, a } = current();
+    const kgs = a.kg?.[exId] || [];
+    const cur = lastKg[exId] ?? (kgs.length ? kgs[kgs.length - 1] : 0);
+    openSheet({
+      title: tr('Weight', 'Vekt'),
+      html: `<div class="field"><label for="kg-in">${esc(exName(exId))} (kg)</label>
+        <input id="kg-in" class="input" type="text" inputmode="decimal" autocomplete="off" value="${cur ? String(cur).replace('.', S().prefs.lang === 'nb' ? ',' : '.') : ''}"></div>
+        <button class="btn primary" data-act="ok">${tr('Use this weight', 'Bruk denne vekten')}</button>`,
+      actions: {
+        ok: (b, e, sheet) => {
+          const v = parseFloat(String(sheet.querySelector('#kg-in').value).replace(',', '.'));
+          if (!(v >= 0 && v <= 400)) { toast(tr('That weight looks off.', 'Den vekten ser feil ut.')); return; }
+          lastKg[exId] = Math.round(v * 10) / 10;
+          closeSheet();
+          nav.rerender();
+        },
+      },
+      onMount: (sheet) => setTimeout(() => sheet.querySelector('#kg-in')?.select(), 250),
+    });
+  },
+  useKg: (el) => {
+    const { exId } = current();
+    lastKg[exId] = Number(el.dataset.kg);
     nav.rerender();
   },
   logset: () => { countdown = null; logSet(); },
   unset: (el) => {
     const { exId } = current();
-    mutate((s) => { s.activeWorkout.sets[exId]?.splice(Number(el.dataset.i), 1); });
+    const i = Number(el.dataset.i);
+    mutate((s) => {
+      s.activeWorkout.sets[exId]?.splice(i, 1);
+      s.activeWorkout.kg?.[exId]?.splice(i, 1);
+    });
     nav.rerender();
   },
   countdown: () => {
     if (countdown) { countdown = null; nav.rerender(); return; }
-    const { exId, ex } = current();
-    const secs = lastValue[exId] ?? ex.def;
+    const { exId, ex, item } = current();
+    const secs = lastValue[exId] ?? item.reps ?? ex.def;
     rest = null;
     countdown = { until: Date.now() + secs * 1000, total: secs * 1000 };
     nav.rerender();
   },
   skipRest: () => { rest = null; nav.rerender(); },
+  restPlus: () => {
+    if (rest) { rest.until += 15000; rest.total += 15000; }
+    nav.rerender();
+  },
   next: () => {
     rest = null;
     countdown = null;
-    mutate((s) => { s.activeWorkout.ex = Math.min(WORKOUTS[s.activeWorkout.id].ex.length - 1, s.activeWorkout.ex + 1); });
+    mutate((s) => { s.activeWorkout.ex = Math.min(listOf(s.activeWorkout).length - 1, s.activeWorkout.ex + 1); });
     nav.rerender();
     nav.scrollTo(0);
   },
@@ -242,8 +443,8 @@ export const actions = {
   },
   finish: async () => {
     const a = S().activeWorkout;
-    const total = Object.values(a.sets).reduce((n, arr) => n + arr.length, 0);
-    if (!total && a.id !== 'walk') {
+    if (!a) return;
+    if (!setCount(a) && a.id !== 'walk') {
       const ok = await confirmSheet({
         title: tr('End the workout?', 'Avslutte økten?'),
         text: tr('No sets are logged yet. Save it anyway as a short session?', 'Ingen sett er logget ennå. Lagre likevel som en kort økt?'),

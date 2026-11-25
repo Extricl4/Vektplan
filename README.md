@@ -2,10 +2,10 @@
 
 Emil's personal app for eating a little more, a little more often — gently.
 
-- **Today**: what to eat now, progress for the day, stomach check-in, daily words
-- **Food**: a rotating low-FODMAP meal plan (6 small meals), recipes, shopping list
+- **Today**: a calm idea for the next meal (yours or the app's), progress for the day, stomach check-in, daily words
+- **Food**: your own food (save it once, log it in one tap), a meal plan that uses your food, Vektplan's low-FODMAP recipes, or just meal times; recipes and a shopping list
 - **Log**: search foods, type what you ate, or snap a photo (AI estimate)
-- **Train**: a beginner strength rhythm, walks and stretching, with a guided workout screen
+- **Train**: build your own plan (home / dumbbells / gym; full body, upper/lower, push/pull/legs or your own muscle groups; a gentle level for when you eat little), edit every session, log reps and kg with last time shown, plus a food-for-training guide (before/after, protein powder, creatine, pre-workout)
 - **Progress**: journal, a pattern finder that links food to symptoms, weight and BMI
 - **Coach**: quick help offline, full chat with an optional Claude API key
 - **Apple Watch**: sleep, resting pulse, HRV, active calories, steps, exercise minutes and weight,
@@ -32,11 +32,13 @@ installs it straight away.
 | `version.json`, `js/version.js` | Current version and release notes |
 | `js/app.js` | Startup, routing, events |
 | `js/store.js` | Data saved on the phone (localStorage) |
-| `js/planner.js` | Meal plan, "eat now", streaks, training rhythm |
+| `js/planner.js` | Meal plan, what's next, streaks |
+| `js/mymeals.js` | Your own food: save, edit, log |
+| `js/training.js` | Training plans: exercise picking, sessions, history per exercise |
 | `js/patterns.js` | Local food ↔ symptom pattern finder |
 | `js/ai.js` | Optional Claude features (photo estimate, coach, deeper patterns) |
 | `js/health.js` | Reads the Apple Health text from the Shortcut (`Type;Start;End;Value;Unit` per line) |
-| `js/data/` | Recipes, foods, workouts, daily words (English + Norwegian) |
+| `js/data/` | Recipes, foods, exercises (by muscle group and equipment), daily words (English + Norwegian) |
 | `js/views/` | One file per screen |
 
 Font: [Figtree](https://github.com/erikdkennedy/figtree) (SIL Open Font License).

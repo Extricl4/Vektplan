@@ -4,7 +4,8 @@ import { dayStatus, totals, setPlan, skipSlot, itemInfo } from './planner.js';
 import { RECIPES, POOLS, GENTLE, recipeById } from './data/recipes.js';
 import { tr, L, n0, kindName } from './i18n.js';
 import { icon, openSheet, closeSheet, toast, plate, fodmapBadge } from './ui.js';
-import { esc, dayKey, clock, norm } from './util.js';
+import { esc, dayKey, clock, norm, addDays } from './util.js';
+import { myMeals, sortedMeals, mealsFor, logMyMeal, myMealSheet, kcalLine, whenOf } from './mymeals.js';
 import { nav } from './nav.js';
 
 const PORTIONS = [
@@ -35,6 +36,7 @@ export function cheer(key = dayKey()) {
 // Log the planned item for a slot.
 export function logPlanned(key, entry, portion = 1) {
   const info = itemInfo(entry.item);
+  if (info.mine) { logMyMeal(key, info.mine, entry.slot.id, portion); return; }
   addLog(key, {
     slot: entry.slot.id,
     title: info.title,
@@ -104,21 +106,34 @@ export function swapSheet(key, slot) {
   const row = (r) => `<button class="item" data-act="pick" data-id="${r.id}" data-name="${esc(norm(L(r.name)))}">
       ${plate(r, 44)}<span class="grow"><span class="t" style="display:block">${esc(L(r.name))}</span>
       <span class="s">${r.min} min${calm ? '' : ` · ${n0(r.kcal)} kcal`}${r.gentle ? ` · ${tr('gentle', 'mild')}` : ''}</span></span></button>`;
+  const mine = sortedMeals(mealsFor(slot.kind));
+  const others = sortedMeals(myMeals().filter((m) => !mine.includes(m)));
+  const myRow = (m) => `<button class="item" data-act="pickMy" data-id="${m.id}" data-name="${esc(norm(m.name))}">
+      <span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(m.name)}</span>
+      <span class="s">${tr('My food', 'Min mat')}${kcalLine(m) ? ` · ${kcalLine(m)}` : ''}</span></span></button>`;
   openSheet({
-    title: `${tr('Swap', 'Bytt')} ${kindName(slot.kind).toLowerCase()}`,
+    title: `${tr('Change', 'Endre')} ${kindName(slot.kind).toLowerCase()}`,
     html: `<div class="search">${icon('search', 18)}<label class="sr-only" for="swap-q">${tr('Search', 'Søk')}</label>
-      <input id="swap-q" class="input" type="search" placeholder="${tr('Search recipes', 'Søk i oppskrifter')}" data-input="filter" autocomplete="off"></div>
-      <p class="label">${tr('Good for', 'Passer til')} ${kindName(slot.kind).toLowerCase()}</p>
+      <input id="swap-q" class="input" type="search" placeholder="${tr('Search your food and recipes', 'Søk i maten din og oppskrifter')}" data-input="filter" autocomplete="off"></div>
+      <button class="item" data-act="free" style="border:1px dashed var(--line);border-radius:16px"><span class="plate-mini" aria-hidden="true">${icon('sparkle', 18)}</span>
+        <span class="grow"><span class="t" style="display:block">${tr('No idea needed, I choose myself', 'Trenger ikke forslag, jeg velger selv')}</span><span class="s">${tr('Just keep the time', 'Bare behold tidspunktet')}</span></span></button>
+      <p class="label">${tr('My food', 'Min mat')}</p>
+      ${mine.length || others.length ? `<div class="list" id="swap-m">${[...mine, ...others].map(myRow).join('')}</div>` : `<p class="small muted">${tr('Save the food you actually like to eat, and it shows up here.', 'Lagre maten du faktisk liker å spise, så dukker den opp her.')}</p>`}
+      <button class="btn outline small" data-act="newMy">${icon('plus', 16)} ${tr('Add your own food', 'Legg til din egen mat')}</button>
+      <p class="label">${tr('Recipes good for', 'Oppskrifter som passer til')} ${kindName(slot.kind).toLowerCase()}</p>
       <div class="list" id="swap-a">${pool.map((id) => recipeById(id)).filter(Boolean).map(row).join('')}</div>
       <p class="label">${tr('Everything else', 'Alt annet')}</p>
       <div class="list" id="swap-b">${rest.map(row).join('')}</div>
       <button class="btn outline" data-act="clear">${tr('Back to the suggestion', 'Tilbake til forslaget')}</button>`,
     actions: {
       pick: (el) => { setPlan(key, slot.id, { rid: el.dataset.id }); closeSheet(); toast(tr('Plan updated.', 'Planen er oppdatert.')); nav.rerender(); },
+      pickMy: (el) => { setPlan(key, slot.id, { my: el.dataset.id }); closeSheet(); toast(tr('Plan updated.', 'Planen er oppdatert.')); nav.rerender(); },
+      free: () => { setPlan(key, slot.id, { free: true }); closeSheet(); toast(tr('Okay, you choose.', 'Greit, du velger.')); nav.rerender(); },
+      newMy: () => myMealSheet(null, { prefill: { when: [whenOf(slot.kind)] }, onSaved: (m) => { if (m) { const saved = myMeals().find((x) => x.name === m.name); if (saved) setPlan(key, slot.id, { my: saved.id }); } nav.rerender(); } }),
       clear: () => { mutate(() => { delete day(key).plan[slot.id]; }); closeSheet(); nav.rerender(); },
       filter: (el, e, sheet) => {
         const q = norm(el.value.trim());
-        sheet.querySelectorAll('[data-act="pick"]').forEach((b) => { b.classList.toggle('hidden', !!q && !b.dataset.name.includes(q)); });
+        sheet.querySelectorAll('[data-act="pick"], [data-act="pickMy"]').forEach((b) => { b.classList.toggle('hidden', !!q && !b.dataset.name.includes(q)); });
       },
     },
   });
@@ -191,4 +206,71 @@ export function recipeShort(r) {
 
 export function fodmapLine(f) {
   return fodmapBadge(f);
+}
+
+// Recently logged things (newest first, one per name).
+export function recentLogs(max = 6) {
+  const out = [];
+  const seen = new Set(myMeals().map((m) => norm(m.name)));
+  for (let i = 0; i < 21 && out.length < max; i++) {
+    const d = peekDay(addDays(dayKey(), -i));
+    for (const l of d.logs.slice().reverse()) {
+      const k = norm(l.title);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(l);
+      if (out.length >= max) break;
+    }
+  }
+  return out;
+}
+
+// "I've eaten": the idea, your own food, recent things, or anything else.
+export function eatSheet(key, entry, preselect = null) {
+  const info = itemInfo(entry.item);
+  const calm = S().prefs.calm;
+  const fits = sortedMeals(mealsFor(entry.slot.kind));
+  const mine = [...fits, ...sortedMeals(myMeals()).filter((m) => !fits.includes(m))].filter((m) => m.id !== info.mine?.id).slice(0, 8);
+  const recent = recentLogs(5).filter((l) => norm(l.title) !== norm(info.title));
+  let chosen = preselect; // { kind: 'idea'|'my'|'recent', id }
+  const pick = () => {
+    if (!chosen) return '';
+    const title = chosen.kind === 'idea' ? info.title : chosen.kind === 'my' ? myMeals().find((m) => m.id === chosen.id)?.name : recent.find((l) => l.id === chosen.id)?.title;
+    return `<div class="card tight" style="background:var(--surface2)"><p class="small muted">${tr('How much of', 'Hvor mye av')}</p><p class="h3">${esc(title || '')}</p>${portionButtons(1)}
+      <button class="link-btn" data-act="back" style="align-self:flex-start">${icon('chevL', 14)} ${tr('Something else', 'Noe annet')}</button></div>`;
+  };
+  const list = () => `${!info.free ? `<div class="list"><button class="item" data-act="choose" data-k="idea" data-id="">
+      ${info.recipe ? plate(info.recipe, 44) : `<span class="plate-mini" aria-hidden="true">${icon(info.mine ? 'heart' : 'sparkle', 18)}</span>`}
+      <span class="grow"><span class="t" style="display:block;font-weight:600">${esc(info.title)}</span><span class="s">${tr('The idea for now', 'Forslaget for nå')}${!calm && info.kcal ? ` · ${n0(info.kcal)} kcal` : ''}</span></span>${icon('chevR', 16)}</button></div>` : ''}
+    ${mine.length ? `<p class="label">${tr('My food', 'Min mat')}</p><div class="list">${mine.map((m) => `<button class="item" data-act="choose" data-k="my" data-id="${m.id}">
+      <span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(m.name)}</span>${kcalLine(m) ? `<span class="s">${kcalLine(m)}</span>` : ''}</span>${icon('chevR', 16)}</button>`).join('')}</div>` : ''}
+    ${recent.length ? `<p class="label">${tr('Recently', 'Nylig')}</p><div class="list">${recent.map((l) => `<button class="item" data-act="choose" data-k="recent" data-id="${l.id}">
+      <span class="plate-mini" aria-hidden="true">${icon('clock', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(l.title)}</span>${calm ? '' : `<span class="s">${n0(l.baseKcal ?? l.kcal)} kcal</span>`}</span>${icon('chevR', 16)}</button>`).join('')}</div>` : ''}
+    <div class="btns"><button class="btn secondary" data-act="other">${icon('search', 18)} ${tr('Something else', 'Noe annet')}</button>
+      <button class="btn secondary" data-act="newMy">${icon('plus', 18)} ${tr('New own food', 'Ny egen mat')}</button></div>`;
+  const draw = () => (chosen ? pick() : list());
+  openSheet({
+    title: tr('What did you eat?', 'Hva spiste du?'),
+    html: draw(),
+    actions: {
+      choose: (el, e, sheet) => { chosen = { kind: el.dataset.k, id: el.dataset.id }; sheet.querySelector('.col').innerHTML = draw(); },
+      back: (el, e, sheet) => { chosen = null; sheet.querySelector('.col').innerHTML = draw(); },
+      portion: (el) => {
+        const p = Number(el.dataset.p);
+        if (chosen.kind === 'idea') logPlanned(key, entry, p);
+        else if (chosen.kind === 'my') {
+          const m = myMeals().find((x) => x.id === chosen.id);
+          if (m) logMyMeal(key, m, entry.slot.id, p);
+        } else {
+          const l = recent.find((x) => x.id === chosen.id);
+          if (l) addLog(key, { slot: entry.slot.id, title: l.title, baseKcal: l.baseKcal ?? l.kcal, portion: p, items: l.items || [], tags: l.tags || [], fodmap: l.fodmap || 'low', rid: l.rid || null, myId: l.myId || null, source: 'recent' });
+        }
+        closeSheet();
+        toast(cheer(key));
+        nav.rerender();
+      },
+      other: () => { closeSheet(true); nav.go(`log/${entry.slot.id}`); },
+      newMy: () => myMealSheet(null, { prefill: { when: [whenOf(entry.slot.kind)] }, onSaved: () => setTimeout(() => eatSheet(key, entry), 220) }),
+    },
+  });
 }

@@ -19,7 +19,8 @@ function defaults() {
     schema: SCHEMA,
     created: dayKey(),
     profile: { name: 'Emil', heightCm: 194, goalKcal: null, onboarded: false },
-    prefs: { lang: 'en', theme: 'light', calm: false, restSec: 60 },
+    // planSource: where meal ideas come from: 'auto' (mix once you have own food), 'recipes', 'mix', 'mine', 'free'.
+    prefs: { lang: 'en', theme: 'light', calm: false, restSec: 60, planSource: 'auto', watchHint: true, shortcutName: 'Vektplan Health' },
     slots: DEFAULT_SLOTS.map((s) => ({ ...s })),
     ai: { key: '', model: 'claude-sonnet-5-5' },
     days: {},
@@ -32,6 +33,8 @@ function defaults() {
     shopping: { checked: {} },
     wordOffset: 0,
     health: { days: {}, lastSync: null }, // Apple Watch numbers per day, from the Shortcut (js/health.js)
+    myMeals: [], // your own food: { id, name, kcal, fodmap, when: [kinds], note, used, last } (js/mymeals.js)
+    training: {}, // your own training plan (js/training.js); empty = the built-in rhythm
   };
 }
 
@@ -59,6 +62,8 @@ function migrate(saved) {
   // Personal app: it's always Emil (194 cm). Fill these in if an older setup left them empty.
   if (!String(s.profile.name || '').trim()) s.profile.name = 'Emil';
   if (!s.profile.heightCm) s.profile.heightCm = 194;
+  if (!Array.isArray(s.myMeals)) s.myMeals = [];
+  if (!s.training || typeof s.training !== 'object' || Array.isArray(s.training)) s.training = {};
   s.schema = SCHEMA;
   return s;
 }
