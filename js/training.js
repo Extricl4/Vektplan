@@ -5,6 +5,7 @@ import { LIB, GROUPS, GROUP_ORDER, PLACES, weighted, kgStep } from './data/exerc
 import { WORKOUTS, WEEK_PLAN, OTHER_ACTIVITIES } from './data/workouts.js';
 import { L, tr } from './i18n.js';
 import { dayKey, weekday, dayNum, startOfWeek, uid } from './util.js';
+import { SLOTS, slotIds, slotPick, FOCUS, FOCUS_ORDER, PROGRAMS, REPS, EASIER, HARDER } from './data/programs.js';
 
 const N = (en, nb) => ({ en, nb });
 
@@ -98,8 +99,16 @@ export const sessions = () => training().sessions || [];
 export const sessionById = (id) => sessions().find((s) => s.id === id) || null;
 
 // ---------- Picking exercises ----------
-function allowedEquip(place) {
-  return (PLACES[place] || PLACES.home).equip;
+// The equipment you have at a place (you can tick what you own). Body weight is always there.
+export function allowedEquip(place) {
+  const own = training().equip?.[place];
+  return [...new Set(['none', ...(Array.isArray(own) ? own : (PLACES[place] || PLACES.home).equip)])];
+}
+export function setEquip(place, list) {
+  mutate((s) => {
+    s.training ||= {};
+    s.training.equip = { ...(s.training.equip || {}), [place]: [...new Set(list)].filter((e) => e !== 'none') };
+  });
 }
 export function available(exId, place = training().place || 'home') {
   const ex = LIB[exId];
@@ -110,7 +119,8 @@ const HEAVY = new Set(['deadlift', 'bbsquat']);
 
 function poolFor(group, place, gentle = false) {
   // With weights available, body-weight moves come after the loaded ones of the same rank.
-  const rank = (ex) => ex.pri + (place !== 'home' && ex.equip.length === 1 && ex.equip[0] === 'none' ? 0.5 : 0);
+  const loaded = allowedEquip(place).some((e) => ['dumbbell', 'kettlebell', 'barbell', 'machine', 'cable'].includes(e));
+  const rank = (ex) => ex.pri + (loaded && ex.equip.every((e) => e === 'none' || e === 'band') ? 0.5 : 0);
   return Object.entries(LIB)
     .filter(([id, ex]) => !NO_AUTO.has(id) && !(gentle && HEAVY.has(id)) && ex.groups[0] === group && ex.equip.some((e) => allowedEquip(place).includes(e)))
     .sort((a, b) => rank(a[1]) - rank(b[1]))
@@ -174,7 +184,7 @@ export function addCustomExercise({ name, group, equip, mode, def }) {
   return id;
 }
 
-export function alternatives(exId, place = training().place || 'home') {
+export function alternatives(exId, place = currentPlace()) {
   const ex = getEx(exId);
   if (!ex) return [];
   return Object.entries(allEx())
@@ -236,7 +246,7 @@ export function buildPlan(cfg) {
 
 // Saving a new plan keeps the exercises you made yourself.
 export function savePlan(plan) {
-  mutate((s) => { s.training = { ...plan, customEx: s.training?.customEx || {} }; });
+  mutate((s) => { s.training = { ...plan, customEx: s.training?.customEx || {}, equip: s.training?.equip, todayPlace: s.training?.todayPlace || null }; });
 }
 
 export const restSeconds = () => training().restSec || S().prefs.restSec || 60;
@@ -334,11 +344,14 @@ function estimateMinutes(ex) {
 }
 
 // One shape for every kind of session: your own, the built-in ones, walks.
-export function workoutDef(id) {
+export function workoutDef(id, place = currentPlace()) {
   if (!id || id === 'rest') return null;
   if (id === 'walk') return { id, name: L(WORKOUTS.walk.name), sub: L(WORKOUTS.walk.sub), kind: 'walk', ex: [], minutes: 20, groups: [] };
   const s = sessionById(id);
-  if (s) return { id, name: s.name, sub: groupsText(s.groups), kind: 'strength', ex: s.ex.filter((e) => getEx(e.id)), minutes: estimateMinutes(s.ex), groups: s.groups, own: true };
+  if (s) {
+    const ex = resolveList(s.ex.filter((e) => getEx(e.id)), place);
+    return { id, name: s.name, sub: groupsText(s.groups), kind: 'strength', ex, minutes: estimateMinutes(ex), groups: s.groups, own: true, slots: ex.some((e) => e.slot), place };
+  }
   const w = WORKOUTS[id];
   if (w) {
     const ex = w.ex.map((e) => ({ id: e, sets: w.kind === 'mobility' ? 1 : 3, reps: LIB[e].def }));
@@ -364,6 +377,10 @@ export function shortName(id) {
   if (id === 'strengthA' || id === 'strengthB') return tr('Strength', 'Styrke');
   const s = sessionById(id);
   if (!s) return '';
+  if (s.key && s.kind) {
+    const letter = s.key.slice(-1);
+    return `${s.kind === 'upper' ? tr('Upper', 'Over') : s.kind === 'lower' ? tr('Lower', 'Under') : tr('Full', 'Hel')} ${letter}`;
+  }
   const first = s.name.split(/[ +·]/)[0];
   return first.length > 7 ? first.slice(0, 6) + '.' : first;
 }
@@ -381,16 +398,23 @@ export function lastLog(exId, beforeTs = Infinity) {
 }
 
 // If every set last time reached the target, gently suggest a bit more weight.
+// After a session where every set reached the goal (the top of the rep range):
+// a little more weight, or the harder version, or slower reps.
 export function progressHint(exId, target) {
   const ex = getEx(exId);
-  if (!weighted(ex)) return null;
+  if (!ex || ex.mode === 'time') return null;
   const last = lastLog(exId);
   if (!last) return null;
-  const kgs = last.sets.map((s) => s.kg).filter((k) => k > 0);
-  if (!kgs.length) return null;
-  const top = Math.max(...kgs);
-  const hit = last.sets.length >= (target.sets || 1) && last.sets.every((s) => s.r >= (target.reps || ex.def));
-  return hit ? { kg: top + kgStep(ex), from: top } : null;
+  const goal = target.hi || target.reps || ex.def;
+  const hit = last.sets.length >= Math.min(2, target.sets || 1) && last.sets.every((s) => s.r >= goal);
+  if (!hit) return null;
+  if (weighted(ex)) {
+    const kgs = last.sets.map((s) => s.kg).filter((k) => k > 0);
+    if (!kgs.length) return null;
+    const top = Math.max(...kgs);
+    return { kg: top + kgStep(ex), from: top };
+  }
+  return HARDER[exId] ? { harder: HARDER[exId] } : { tempo: true };
 }
 
 export function bestSet(exId) {
@@ -425,4 +449,100 @@ export function newBests(log, beforeTs) {
     if (prev && top > prev) out.push({ exId, kg: top, prev });
   }
   return out;
+}
+
+// ---------- Ready-made programs (js/data/programs.js) ----------
+export const easierOf = (id) => EASIER[id] || null;
+export const harderOf = (id) => HARDER[id] || null;
+
+// Where you train today: the place you picked for today, or your usual place.
+export function currentPlace(key = dayKey()) {
+  const t = training();
+  if (t.todayPlace?.date === key && PLACES[t.todayPlace.place]) return t.todayPlace.place;
+  return PLACES[t.place] ? t.place : 'home';
+}
+export function setTodayPlace(place, key = dayKey()) {
+  if (!PLACES[place]) return;
+  mutate((s) => { s.training ||= {}; s.training.todayPlace = { date: key, place }; });
+}
+
+const pickFor = (slot, place, used) => slotPick(slot, allowedEquip(place), used);
+
+// Turn slot items into the exercise for this place. Exercises you chose yourself stay as they are.
+export function resolveList(items, place = currentPlace()) {
+  const isSlot = (e) => e.slot && SLOTS[e.slot] && slotIds(e.slot).includes(e.id);
+  const used = new Set(items.filter((e) => !isSlot(e)).map((e) => e.id));
+  const out = items.map((e) => {
+    if (!isSlot(e)) return e;
+    const id = pickFor(e.slot, place, used) || e.id;
+    used.add(id);
+    if (id === e.id) return e;
+    const x = LIB[id];
+    return { ...e, id, reps: x?.mode === 'time' ? x.def : e.hi || x?.def || e.reps };
+  });
+  return out.filter((e, i) => out.findIndex((y) => y.id === e.id) === i);
+}
+
+export function buildProgram(cfg) {
+  const prog = PROGRAMS[cfg.id] || PROGRAMS.start2;
+  const level = LEVELS[cfg.level] ? cfg.level : 'gentle';
+  const lvl = LEVELS[level];
+  const range = REPS[cfg.reps] || REPS.grow;
+  const focus = FOCUS_ORDER.filter((f) => (cfg.focus || []).includes(f));
+  const place = PLACES[cfg.place] ? cfg.place : 'home';
+  const days = [...new Set((cfg.days?.length ? cfg.days : prog.days).map(Number))].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
+  const made = prog.sessions.map((t, k) => {
+    const slots = t.slots.slice();
+    const isFocus = (slot) => focus.some((f) => FOCUS[f].kinds.includes(t.kind) && FOCUS[f].slots.includes(slot));
+    // The first three (the big lifts: legs, push, pull) always stay, so the body stays balanced.
+    const KEEP = 3;
+    // Each focus muscle gets at least two exercises (one for core) in the sessions that train it,
+    // placed right after the big lifts so they come while you are fresh.
+    let at = Math.min(KEEP, slots.length);
+    for (const f of focus) {
+      const F = FOCUS[f];
+      if (!F.kinds.includes(t.kind)) continue;
+      // Arms: always one biceps and one triceps exercise.
+      for (const pair of F.each || []) if (!pair.some((x) => slots.includes(x))) slots.splice(at++, 0, pair[k % pair.length]);
+      let need = (F.min ?? 2) - slots.filter((x) => F.slots.includes(x)).length;
+      // Rotate the extras between sessions so A and B don't get the same ones.
+      const order = F.min === 2 && f === 'arms' ? F.slots : [...F.slots.slice(k % F.slots.length), ...F.slots.slice(0, k % F.slots.length)];
+      for (const x of order) {
+        if (need <= 0) break;
+        if (!slots.includes(x)) { slots.splice(at++, 0, x); need--; }
+      }
+    }
+    // Keep it short: drop the last extras first, then extra focus work. A focus allows one more exercise.
+    const max = lvl.maxN + (focus.length ? 1 : 0);
+    while (slots.length > max) {
+      let i = slots.length - 1;
+      while (i >= KEEP && isFocus(slots[i])) i--;
+      if (i < KEEP) i = slots.length - 1;
+      if (i < KEEP) break;
+      slots.splice(i, 1);
+    }
+    const items = slots.map((slot) => ({ id: slotIds(slot)[0], slot, sets: lvl.sets + (isFocus(slot) ? 1 : 0), reps: range.hi, lo: range.lo, hi: range.hi, ...(isFocus(slot) ? { focus: true } : {}) }));
+    const ex = resolveList(items, place).map((e) => (LIB[e.id]?.mode === 'time' ? { ...e, reps: LIB[e.id].def } : e));
+    return { id: 's-' + uid(), key: t.key, kind: t.kind, name: L(t.name), groups: [...new Set(slots.flatMap((x) => SLOTS[x].g))], ex };
+  });
+  const schedule = {};
+  days.forEach((d, i) => { schedule[d] = made[i % made.length].id; });
+  const used = new Set(Object.values(schedule));
+  const sessionsOut = made.filter((x) => used.has(x.id));
+  const extras = {};
+  const rest = cfg.rest === 'none' ? 'none' : 'mix';
+  if (rest === 'mix') {
+    const free = [0, 1, 2, 3, 4, 5, 6].filter((d) => !days.includes(d));
+    free.slice(0, Math.max(0, free.length - 1)).filter((d, i) => i % 2 === 0).slice(0, 2).forEach((d, i) => { extras[d] = i === 0 ? 'walk' : 'stretch'; });
+  }
+  return {
+    program: { id: cfg.id in PROGRAMS ? cfg.id : 'start2', days, place, focus, level, reps: REPS[cfg.reps] ? cfg.reps : 'grow', rest },
+    split: 'program', place, level, days, rest, restSec: lvl.rest, sessions: sessionsOut, schedule, extras, made: Date.now(),
+  };
+}
+
+export function applyProgram(cfg) {
+  const plan = buildProgram(cfg);
+  mutate((s) => { s.training = { ...plan, customEx: s.training?.customEx || {}, equip: s.training?.equip, todayPlace: s.training?.todayPlace || null }; });
+  return plan;
 }

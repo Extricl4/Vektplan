@@ -450,3 +450,37 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 .wdot.inline { position: static; display: inline-block; vertical-align: -1px; border: none; width: 8px; height: 8px; }
 .choice .badge { vertical-align: 1px; }
 .stepper .kgv { cursor: pointer; padding: 0 4px; text-decoration: underline dotted var(--line); text-underline-offset: 4px; }
+
+/* ---------- Supplements (1.3) ---------- */
+.supps { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; }
+.supp { display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: 56px; border-radius: var(--r-s); background: var(--surface2); border: 1.5px solid transparent; text-align: left; color: var(--ink); font: inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+.supp .box { flex: none; width: 26px; height: 26px; border-radius: 9px; border: 2px solid var(--accent-mid); display: grid; place-items: center; color: transparent; background: var(--surface); transition: background .15s, color .15s; }
+.supp .t { display: block; font-weight: 600; font-size: 15px; line-height: 1.2; }
+.supp .d { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.supp.on { background: var(--accent-soft); border-color: var(--accent-line); }
+.supp.on .box { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.supp:active { transform: scale(0.98); }
+.cheer-line { margin: -4px 6px 0; font-size: 15px; line-height: 1.45; color: var(--soft); font-weight: 500; }
+
+/* ---------- Trends (1.3) ---------- */
+.chart .bar-a { fill: var(--accent-line); }
+.chart .bar-b { fill: var(--amber-bar); opacity: 0.8; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 4px; }
+.sw.a { background: var(--accent-line); }
+.sw.b { background: var(--amber-bar); opacity: 0.8; }
+.habit { display: flex; flex-direction: column; gap: 5px; }
+.habit .cells { display: grid; gap: 3px; }
+.habit .cells i { display: block; height: 18px; border-radius: 5px; background: var(--surface2); }
+
+/* ---------- Amount picker (1.3) ---------- */
+.amt { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface2); border-radius: var(--r-m); padding: 8px; }
+.amt-btn { flex: none; width: 58px; height: 58px; border-radius: 18px; border: none; background: var(--surface); color: var(--ink); font: 500 30px/1 Figtree, sans-serif; display: grid; place-items: center; cursor: pointer; }
+.amt-btn:active { transform: scale(0.95); }
+.amt-v { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; min-width: 0; }
+.amt-v .num:first-child { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+
+/* ---------- Training rules (1.3) ---------- */
+.rules summary::-webkit-details-marker { display: none; }
+.rules[open] summary svg:last-child { transform: rotate(180deg); }
+.rules-list { margin: 4px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; line-height: 1.5; color: var(--soft); }
+.rules-list b { color: var(--ink); font-weight: 600; }

@@ -2,11 +2,11 @@
 
 Emil's personal app for eating a little more, a little more often — gently.
 
-- **Today**: a calm idea for the next meal (yours or the app's), progress for the day, stomach check-in, daily words
-- **Food**: your own food (save it once, log it in one tap), a meal plan that uses your food, Vektplan's low-FODMAP recipes, or just meal times; recipes and a shopping list
-- **Log**: search foods, type what you ate, or snap a photo (AI estimate)
-- **Train**: build your own plan (home / dumbbells / gym; full body, upper/lower, push/pull/legs or your own muscle groups; a gentle level for when you eat little), edit every session, log reps and kg with last time shown, plus a food-for-training guide (before/after, protein powder, creatine, pre-workout)
-- **Progress**: journal, a pattern finder that links food to symptoms, weight and BMI
+- **Today**: a calm idea for the next meal (yours or the app's), progress for the day, kind words about how the day is going, supplements to tick off (creatine, protein powder, vitamins…), stomach check-in
+- **Food**: your own meals built from ingredients (save once, log in one tap), a meal plan that uses them, Vektplan's low-FODMAP recipes, or just meal times; recipes and a shopping list
+- **Log**: build what you ate from ingredients with everyday amounts (slices, glasses, spoons, pieces) or grams, small energy boosters for when you get full fast, type it ("2 slices of bread with cheese"), or snap a photo (AI estimate)
+- **Train**: beginner muscle programs (Start here ×2, full body ×3, upper/lower ×4) that adapt to where you train today (home or gym) and the equipment you have, with optional focus muscles, rep ranges, easier/harder versions, light days and a video link per exercise. Or build your own plan from scratch. Plus a food-for-training guide
+- **Progress**: trends for 7 days to a year (weight, eaten, burned from the Watch, training, supplements, day by day, CSV export), journal, a pattern finder that links food to symptoms, BMI
 - **Coach**: quick help offline, full chat with an optional Claude API key
 - **Apple Watch**: sleep, resting pulse, HRV, active calories, steps, exercise minutes and weight,
   brought in by a Shortcut (web apps can't read Apple Health directly). Guide in the app under Settings → Apple Watch.
@@ -33,12 +33,16 @@ installs it straight away.
 | `js/app.js` | Startup, routing, events |
 | `js/store.js` | Data saved on the phone (localStorage) |
 | `js/planner.js` | Meal plan, what's next, streaks |
-| `js/mymeals.js` | Your own food: save, edit, log |
-| `js/training.js` | Training plans: exercise picking, sessions, history per exercise |
+| `js/mymeals.js` | Your own meals: save, edit, log |
+| `js/amount.js` | Food amounts: everyday units and grams, calories per amount, the amount picker |
+| `js/supps.js` | Supplements: the daily tick list (protein powder also logs as food) |
+| `js/history.js` | One summary per day (food, weight, Watch, training, supplements) for trends and CSV |
+| `js/encourage.js` | Kind words about the day and after workouts |
+| `js/training.js` | Training: programs, places and equipment, exercise picking, sessions, history per exercise |
 | `js/patterns.js` | Local food ↔ symptom pattern finder |
 | `js/ai.js` | Optional Claude features (photo estimate, coach, deeper patterns) |
 | `js/health.js` | Reads the Apple Health text from the Shortcut (`Type;Start;End;Value;Unit` per line) |
-| `js/data/` | Recipes, foods, exercises (by muscle group and equipment), daily words (English + Norwegian) |
+| `js/data/` | Recipes, foods and their amounts, exercises (by muscle group and equipment), programs, daily words (English + Norwegian) |
 | `js/views/` | One file per screen |
 
 Font: [Figtree](https://github.com/erikdkennedy/figtree) (SIL Open Font License).

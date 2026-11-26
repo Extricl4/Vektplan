@@ -5,6 +5,7 @@ import { plannedFor } from './training.js';
 import { healthDay } from './health.js';
 import { L, tr } from './i18n.js';
 import { myMeals, myMealById, mealsFor } from './mymeals.js';
+import { mealKcal } from './amount.js';
 import { dayKey, dayNum, weekday, toMinutes, fromMinutes, nowMinutes, addDays, startOfWeek, daysBetween } from './util.js';
 
 const SEED = { breakfast: 0, snack1: 2, lunch: 1, snack2: 5, dinner: 3, evening: 4 };
@@ -60,7 +61,7 @@ export function itemInfo(item) {
   }
   if (item?.my) {
     const m = myMealById(item.my);
-    if (m) return { title: m.name, kcal: m.kcal || 0, recipe: null, fodmap: m.fodmap || 'low', mine: m };
+    if (m) return { title: m.name, kcal: mealKcal(m), recipe: null, fodmap: m.fodmap || 'low', mine: m };
   }
   if (item?.food) return { title: item.food.title, kcal: item.food.kcal || 0, fodmap: item.food.fodmap || 'low', recipe: null };
   return { title: tr('Your choice', 'Du velger'), kcal: 0, recipe: null, fodmap: 'low', free: true };

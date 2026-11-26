@@ -1,9 +1,11 @@
-// Your own food: things you actually eat (mum's dinner, your usual sandwich, a snack you like).
-// Save them once, then log them in one tap or let the plan suggest them.
+// Your own meals: things you actually eat, saved once with what is in them (and how much),
+// then logged in one tap or suggested by the plan.
+// { id, name, items: [packed amount items], kcal (used when there are no items), when: [kinds], fodmap, note, used, last }
 import { S, mutate, addLog } from './store.js';
 import { tr, n0 } from './i18n.js';
-import { openSheet, closeSheet, toast, icon } from './ui.js';
-import { esc, uid } from './util.js';
+import { uid } from './util.js';
+import { nav } from './nav.js';
+import { mealKcal } from './amount.js';
 
 export const WHEN = [
   ['breakfast', () => tr('Breakfast', 'Frokost')],
@@ -34,11 +36,16 @@ export function sortedMeals(list = myMeals()) {
 }
 
 export function saveMyMeal(m) {
+  let id = m.id;
   mutate((s) => {
-    const i = s.myMeals.findIndex((x) => x.id === m.id);
+    const i = m.id ? s.myMeals.findIndex((x) => x.id === m.id) : -1;
     if (i >= 0) s.myMeals[i] = { ...s.myMeals[i], ...m };
-    else s.myMeals.unshift({ id: 'm-' + uid(), created: Date.now(), used: 0, ...m });
+    else {
+      id = 'm-' + uid();
+      s.myMeals.unshift({ created: Date.now(), used: 0, ...m, id });
+    }
   });
+  return id;
 }
 
 export function deleteMyMeal(id) {
@@ -55,10 +62,11 @@ export function logMyMeal(key, meal, slotId, portion = 1) {
   return addLog(key, {
     slot: slotId || null,
     title: meal.name,
-    baseKcal: meal.kcal || 0,
+    baseKcal: mealKcal(meal),
     portion,
     myId: meal.id,
-    items: meal.items || [],
+    items: (meal.items || []).map((i) => ({ name: i.name, kcal: i.kcal || 0, amount: i.amount, unit: i.unit, fodmap: i.fodmap, tags: i.tags || [] })),
+    tags: [...new Set((meal.items || []).flatMap((i) => i.tags || []))],
     fodmap: meal.fodmap || 'low',
     source: 'mine',
   });
@@ -66,58 +74,14 @@ export function logMyMeal(key, meal, slotId, portion = 1) {
 
 export function kcalLine(m) {
   if (S().prefs.calm) return '';
-  return m.kcal ? `${n0(m.kcal)} kcal` : tr('kcal not set', 'kcal ikke satt');
+  const k = mealKcal(m);
+  return k ? `${n0(k)} kcal` : tr('kcal not set', 'kcal ikke satt');
 }
 
-// Editor for one of your foods. `prefill` can come from a logged meal or the log cart.
-export function myMealSheet(existing = null, { prefill = {}, onSaved } = {}) {
-  const m = { name: '', kcal: '', when: ['breakfast', 'lunch', 'dinner', 'snack'], fodmap: 'low', note: '', ...prefill, ...(existing || {}) };
-  const draw = () => `<div class="field"><label for="mm-name">${tr('What is it?', 'Hva er det?')}</label>
-      <input id="mm-name" class="input" type="text" autocomplete="off" maxlength="80" value="${esc(m.name)}" placeholder="${tr('For example: Chicken wrap like mum makes it', 'For eksempel: Kyllingwrap slik mamma lager den')}"></div>
-    <div class="field"><label for="mm-kcal">${tr('About how many kcal in a normal portion? (optional)', 'Omtrent hvor mange kcal i en vanlig porsjon? (valgfritt)')}</label>
-      <input id="mm-kcal" class="input" type="number" inputmode="numeric" min="0" max="3000" value="${m.kcal || ''}" placeholder="${tr("Leave empty if you don't know", 'La stå tom hvis du ikke vet')}"></div>
-    <div class="field"><span class="label">${tr('When do you eat it?', 'Når spiser du det?')}</span>
-      <div class="chips">${WHEN.map(([k, l]) => `<button class="chip solid" aria-pressed="${m.when.includes(k)}" data-act="when" data-k="${k}">${l()}</button>`).join('')}</div></div>
-    <div class="field"><span class="label">${tr('How does your stomach like it?', 'Hvordan liker magen det?')}</span>
-      <div class="chips">${STOMACH.map(([k, l]) => `<button class="chip solid" aria-pressed="${m.fodmap === k}" data-act="fod" data-k="${k}">${l()}</button>`).join('')}</div></div>
-    <div class="field"><label for="mm-note">${tr('Note (optional)', 'Notat (valgfritt)')}</label>
-      <textarea id="mm-note" class="textarea filled" rows="2" maxlength="300" placeholder="${tr('What is in it, how you make it...', 'Hva er i den, hvordan du lager den...')}">${esc(m.note || '')}</textarea></div>
-    <button class="btn primary" data-act="save">${icon('check', 18)} ${existing ? tr('Save changes', 'Lagre endringer') : tr('Save to My food', 'Lagre i Min mat')}</button>
-    ${existing ? `<button class="btn danger" data-act="del">${icon('trash', 18)} ${tr('Delete', 'Slett')}</button>` : ''}`;
-  const keep = (sheet) => {
-    m.name = sheet.querySelector('#mm-name').value;
-    m.kcal = sheet.querySelector('#mm-kcal').value;
-    m.note = sheet.querySelector('#mm-note').value;
-  };
-  const redraw = (sheet) => { keep(sheet); sheet.querySelector('.col').innerHTML = draw(); };
-  openSheet({
-    title: existing ? tr('Edit your food', 'Endre maten din') : tr('Add your own food', 'Legg til din egen mat'),
-    html: draw(),
-    actions: {
-      when: (el, e, sheet) => {
-        const k = el.dataset.k;
-        m.when = m.when.includes(k) ? m.when.filter((x) => x !== k) : [...m.when, k];
-        redraw(sheet);
-      },
-      fod: (el, e, sheet) => { m.fodmap = el.dataset.k; redraw(sheet); },
-      save: (el, e, sheet) => {
-        keep(sheet);
-        const name = m.name.trim();
-        if (!name) { toast(tr('Give it a name first.', 'Gi den et navn først.')); return; }
-        const kcal = Math.max(0, Math.min(3000, Math.round(Number(m.kcal) || 0)));
-        const out = { name, kcal, when: m.when.length ? m.when : ['breakfast', 'lunch', 'dinner', 'snack'], fodmap: m.fodmap, note: m.note.trim(), items: m.items || [] };
-        if (existing) out.id = existing.id;
-        saveMyMeal(out);
-        closeSheet();
-        toast(existing ? tr('Saved.', 'Lagret.') : tr(`${name} is in My food now.`, `${name} ligger nå i Min mat.`));
-        onSaved?.(out);
-      },
-      del: () => {
-        deleteMyMeal(existing.id);
-        closeSheet();
-        toast(tr('Deleted.', 'Slettet.'));
-        onSaved?.(null);
-      },
-    },
-  });
+// The editor is a full screen (views/mymeal.js). `prefill` can carry a name, items or 'when'.
+let pending = null;
+export const takePrefill = () => { const p = pending; pending = null; return p; };
+export function myMealSheet(existing = null, { prefill = null } = {}) {
+  pending = prefill;
+  nav.go(existing ? `mymeal/${existing.id}` : 'mymeal/new');
 }

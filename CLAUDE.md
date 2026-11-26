@@ -28,13 +28,23 @@ The page never scrolls: `#app` is a full-height flex column, each `.screen` scro
 Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
 
 ## Food and training
-- Own food lives in `myMeals` (`js/mymeals.js`). `prefs.planSource` picks where meal ideas come from: auto/mix/mine/recipes/free.
-  Plan items are `{ rid }` (recipe), `{ my }` (own food), `{ food }` or `{ free: true }`. Today shows ideas, never orders.
-- Training plans are in `training` (`js/training.js`): sessions with `{ id, sets, reps }`, `schedule[weekday] = sessionId`,
+- Food amounts: `js/data/amounts.js` gives every food everyday units (`slice`, `glass`, `dl`, `piece`…) plus grams;
+  `js/amount.js` turns them into items `{ src, fid, name, units, amount, unit }` with `itemKcal`, `itemFodmap`
+  (portions above Monash low-FODMAP limits become "moderate"), `amountSheet()` and `packItem()`/`restoreItem()` for saving.
+- Own meals live in `myMeals` (`js/mymeals.js`), now with `items` (ingredients with amounts); old ones only have `kcal`.
+  The editor is the `mymeal/<id|new>` screen. `prefs.planSource` picks where meal ideas come from: auto/mix/mine/recipes/free.
+  Plan items are `{ rid }` (recipe), `{ my }` (own meal), `{ food }` or `{ free: true }`. Today shows ideas, never orders.
+- Supplements: `supps.list` (`js/supps.js`), ticks per day in `days[key].supps`. Protein powder also adds a food log with `supp: id`.
+- Trends: `js/history.js` builds one summary per day from what's stored; nothing extra is saved.
+- Training plans are in `training` (`js/training.js`). Ready-made programs (`js/data/programs.js`) store session items with a
+  `slot` (squat, push, row…) plus `lo`/`hi` rep range; `resolveList()` turns slots into exercises for the place
+  (`currentPlace()`: today's pick or `training.place`) and the equipment ticked in `training.equip[place]`. Items you swapped
+  yourself stay as they are. Places are `home` and `gym` (old `dumbbells` is migrated to home + dumbbells).
+  Sessions: `{ id, name, groups, ex: [{ id, sets, reps, slot?, lo?, hi?, focus? }] }`, `schedule[weekday] = sessionId`,
   `extras[weekday] = 'walk'|'stretch'`. Empty `training.sessions` = the built-in Strength A/B rhythm.
   `workoutDef(id)` gives one shape for own sessions, built-in ones and walks. Workouts save `log[exId] = [{ r, kg }]`.
-- Default level is "gentle" (he eats very little): 2 sets, max 5 exercises, 90 s rest, no heavy barbell lifts auto-picked,
-  nothing that presses on the stomach (crunches, leg raises) auto-picked.
+- Default level is "gentle" (he eats very little): 2 sets, max 5 exercises (6 with a focus), 90 s rest, no heavy barbell lifts
+  auto-picked, nothing that presses on the stomach (crunches, leg raises) auto-picked.
 
 ## Apple Watch
 Web apps can't read HealthKit. A Shortcut (guide in `js/views/health.js`) copies Health samples as

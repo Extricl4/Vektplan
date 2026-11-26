@@ -61,7 +61,7 @@ function planTab(selected) {
       <span class="time">${x.time}</span>
       <span class="state ${stateCls}">${state === 'done' ? icon('check', 13, 'stroke-width="3.2"') : ''}</span>
       <a class="grow" href="${r ? `#/recipe/${r.id}/${selected}/${x.slot.id}` : x.info.mine ? '#/food/mine' : '#/food'}" style="color:inherit;text-decoration:none;min-width:0">
-        <span class="s" style="display:block">${sub}${x.info.mine ? ` · ${tr('my food', 'min mat')}` : ''}</span><span class="t" style="display:block;${x.info.free && state !== 'done' ? 'color:var(--muted);font-weight:500' : ''}">${esc(state === 'done' && x.logs[0] ? x.logs.map((l) => l.title).join(', ') : x.info.title)}</span></a>
+        <span class="s" style="display:block">${sub}${x.info.mine ? ` · ${tr('my meal', 'mitt måltid')}` : ''}</span><span class="t" style="display:block;${x.info.free && state !== 'done' ? 'color:var(--muted);font-weight:500' : ''}">${esc(state === 'done' && x.logs[0] ? x.logs.map((l) => l.title).join(', ') : x.info.title)}</span></a>
       ${state !== 'done' ? `<button class="icon-btn" style="width:38px;height:38px;background:transparent;color:var(--muted)" data-act="swap" data-slot="${x.slot.id}" aria-label="${tr('Swap', 'Bytt')} ${esc(x.info.title)}">${icon('swap', 18)}</button>` : ''}
     </div>`;
   }).join('');
@@ -77,8 +77,8 @@ function planTab(selected) {
 }
 
 const SOURCES = [
-  ['mix', () => tr('A mix of my food and recipes', 'En miks av min mat og oppskrifter'), () => tr('Your own food on some meals, Vektplan ideas on others.', 'Din egen mat på noen måltider, Vektplan-forslag på andre.')],
-  ['mine', () => tr('Only my food', 'Bare min mat'), () => tr('Ideas come from the food you saved. Empty spots are your choice.', 'Forslagene kommer fra maten du har lagret. Tomme plasser velger du selv.')],
+  ['mix', () => tr('A mix of my meals and recipes', 'En miks av mine måltider og oppskrifter'), () => tr('Your own food on some meals, Vektplan ideas on others.', 'Din egen mat på noen måltider, Vektplan-forslag på andre.')],
+  ['mine', () => tr('Only my meals', 'Bare mine måltider'), () => tr('Ideas come from the meals you saved. Empty spots are your choice.', 'Forslagene kommer fra måltidene du har lagret. Tomme plasser velger du selv.')],
   ['recipes', () => tr('Vektplan recipes', 'Vektplan-oppskrifter'), () => tr('Low-FODMAP recipes picked for each meal.', 'Lav-FODMAP-oppskrifter valgt til hvert måltid.')],
   ['free', () => tr('Just meal times, I choose', 'Bare måltidstider, jeg velger'), () => tr('No ideas. The plan only keeps the rhythm.', 'Ingen forslag. Planen holder bare rytmen.')],
 ];
@@ -95,15 +95,16 @@ function mineTab() {
   const list = sortedMeals(myMeals());
   const calm = S().prefs.calm;
   const stomach = (k) => STOMACH.find(([x]) => x === k)?.[1]() || '';
-  return `<button class="btn primary" data-act="newMy">${icon('plus', 18)} ${tr('Add your own food', 'Legg til din egen mat')}</button>
+  return `<button class="btn primary" data-act="newMy">${icon('plus', 18)} ${tr('New meal', 'Nytt måltid')}</button>
     ${list.length ? `<div class="col" style="gap:10px">${list.map((m) => `<section class="card tight">
       <div class="row between top" style="gap:10px"><button class="grow" data-act="editMy" data-id="${m.id}" style="all:unset;cursor:pointer;min-width:0">
         <span class="h3" style="display:block">${esc(m.name)}</span>
-        <span class="small muted">${[!calm ? kcalLine(m) : '', stomach(m.fodmap), (m.when || []).map((w) => WHEN.find(([k]) => k === w)?.[1]()).filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</span>
+        <span class="small muted">${[(m.items || []).length ? `${m.items.length} ${tr('ingredients', 'ingredienser')}` : '', !calm ? kcalLine(m) : '', stomach(m.fodmap)].filter(Boolean).join(' · ')}</span>
+        ${(m.items || []).length ? `<span class="tiny soft" style="display:block;margin-top:3px">${esc(m.items.slice(0, 4).map((i) => i.name.replace(/\s*\(.*\)$/, '')).join(', '))}${m.items.length > 4 ? '…' : ''}</span>` : ''}
         ${m.note ? `<span class="small soft" style="display:block;margin-top:4px">${esc(m.note)}</span>` : ''}</button>
         <button class="btn tiny secondary" data-act="logMy" data-id="${m.id}">${icon('plus', 15)} ${tr('Log', 'Logg')}</button></div></section>`).join('')}</div>`
       : `<div class="empty-state">${icon('heart', 30)}<p>${tr('Put the food you actually eat here: your usual breakfast, a dinner at home, a snack that sits well. Then you can log it in one tap, and the plan can suggest it.', 'Legg inn maten du faktisk spiser: den vanlige frokosten, middag hjemme, et mellommåltid som går fint. Da kan du logge med ett trykk, og planen kan foreslå den.')}</p></div>`}
-    <p class="tiny muted" style="margin:0 6px;line-height:1.5">${tr('Tip: when you log a meal, tap "Save this meal to My food" to keep it here.', 'Tips: når du logger et måltid, trykk «Lagre måltidet i Min mat» for å ha det her.')}</p>`;
+    <p class="tiny muted" style="margin:0 6px;line-height:1.5">${tr('Tip: when you log food, switch on "Also save it to My meals" and it shows up here.', 'Tips: når du logger mat, slå på «Lagre det også i Mine måltider», så dukker det opp her.')}</p>`;
 }
 
 export function recipeCard(r) {
@@ -200,7 +201,7 @@ export function render(ctx) {
       <a class="btn small secondary" href="#/food/shop">${icon('cart', 17)} ${tr('Shopping list', 'Handleliste')}</a></header>
     <div class="seg" role="tablist">
       <a role="tab" href="#/food" aria-selected="${!isRecipes && !isMine}">${tr('Plan', 'Plan')}</a>
-      <a role="tab" href="#/food/mine" aria-selected="${isMine}">${tr('My food', 'Min mat')}</a>
+      <a role="tab" href="#/food/mine" aria-selected="${isMine}">${tr('My meals', 'Mine måltider')}</a>
       <a role="tab" href="#/food/recipes" aria-selected="${isRecipes}">${tr('Recipes', 'Oppskrifter')}</a></div>
     ${isRecipes ? recipesTab() : isMine ? mineTab() : planTab(selected)}
   </div>${tabbar('food')}`;
@@ -227,16 +228,16 @@ export const actions = {
           const v = b.dataset.v;
           mutate((s) => { s.prefs.planSource = v; });
           closeSheet();
-          if ((v === 'mine' || v === 'mix') && !myMeals().length) toast(tr('Add your own food in My food, and it shows up in the plan.', 'Legg inn din egen mat under Min mat, så dukker den opp i planen.'), 3600);
+          if ((v === 'mine' || v === 'mix') && !myMeals().length) toast(tr('Save a few meals under My meals, and they show up in the plan.', 'Lagre noen måltider under Mine måltider, så dukker de opp i planen.'), 3600);
           nav.rerender();
         },
       },
     });
   },
-  newMy: () => myMealSheet(null, { onSaved: () => nav.rerender() }),
+  newMy: () => myMealSheet(null),
   editMy: (el) => {
     const m = myMeals().find((x) => x.id === el.dataset.id);
-    if (m) myMealSheet(m, { onSaved: () => nav.rerender() });
+    if (m) myMealSheet(m);
   },
   logMy: (el) => {
     const m = myMeals().find((x) => x.id === el.dataset.id);

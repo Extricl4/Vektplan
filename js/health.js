@@ -196,7 +196,7 @@ export function parseHealthText(text) {
       if (um) unit = um[1];
     }
     const kind = kindOf(type, unit, value);
-    if (kind === 'other' || kind === 'basal') { unknown++; continue; }
+    if (kind === 'other') { unknown++; continue; }
     kinds.add(kind);
     const key = dayKey(start);
     if (kind === 'sleep') {
@@ -212,9 +212,9 @@ export function parseHealthText(text) {
     let n = parseNum(value);
     if (n == null) { skipped++; continue; }
     const u = norm(unit);
-    if (kind === 'active') {
+    if (kind === 'active' || kind === 'basal') {
       if (/kj/.test(u)) n /= 4.184;
-      add(sums, key, 'activeKcal', n);
+      add(sums, key, kind === 'basal' ? 'basalKcal' : 'activeKcal', n);
     } else if (kind === 'steps') add(sums, key, 'steps', n);
     else if (kind === 'exercise') add(sums, key, 'exerciseMin', /^(s|sec|sek)/.test(u) ? n / 60 : /^(h|hr|t)$/.test(u) ? n * 60 : n);
     else if (kind === 'restingHR') push(avgs, key, 'restingHR', n);
@@ -263,7 +263,7 @@ export function looksLikeHealth(text) {
 }
 
 // ---------- Store ----------
-const SUM_FIELDS = ['activeKcal', 'steps', 'exerciseMin'];
+const SUM_FIELDS = ['activeKcal', 'basalKcal', 'steps', 'exerciseMin'];
 const AVG_FIELDS = ['restingHR', 'hrv', 'hrAvg', 'hrMin', 'hrMax'];
 
 export function importHealth(text) {
@@ -344,6 +344,7 @@ export const KIND_LIST = [
   ['restingHR', () => tr('Resting pulse', 'Hvilepuls')],
   ['hrv', () => tr('Heart rate variability', 'Pulsvariasjon')],
   ['active', () => tr('Active calories', 'Aktive kalorier')],
+  ['basal', () => tr('Resting calories', 'Hvilekalorier')],
   ['steps', () => tr('Steps', 'Skritt')],
   ['exercise', () => tr('Exercise minutes', 'Treningsminutter')],
   ['weight', () => tr('Weight', 'Vekt')],

@@ -39,6 +39,7 @@ export const FOODS = [
   F('bacon', N('Bacon', 'Bacon'), N('3 slices (30 g)', '3 skiver (30 g)'), 160, 'low', ['fatty']),
   F('ham', N('Sliced ham', 'Skinkepålegg'), N('2 slices (30 g)', '2 skiver (30 g)'), 35, 'check', [], N('Some contain garlic or onion. Check the label.', 'Noen inneholder hvitløk eller løk. Sjekk etiketten.')),
   F('sausage', N('Sausage (pølse)', 'Pølse'), N('1 (100 g)', '1 stk (100 g)'), 250, 'check', ['fatty', 'garlic_onion'], N('Usually seasoned with onion or garlic.', 'Krydres som regel med løk eller hvitløk.')),
+  F('whey', N('Protein powder (whey isolate)', 'Proteinpulver (whey isolat)'), N('1 scoop (30 g)', '1 skje (30 g)'), 115, 'check', [], N('Whey isolate is usually fine. Check the label for inulin, chicory root and sweeteners ending in -ol.', 'Whey isolat går som regel fint. Sjekk etiketten for inulin, sikorirot og søtstoffer som slutter på -ol.')),
   F('fishcakes', N('Fish cakes (fiskekaker)', 'Fiskekaker'), N('2 pieces (130 g)', '2 stk (130 g)'), 210, 'check', ['wheat', 'garlic_onion'], N('Often contain onion and wheat flour.', 'Inneholder ofte løk og hvetemel.')),
 
   // Dairy
@@ -54,6 +55,7 @@ export const FOODS = [
   F('cottage', N('Cottage cheese', 'Cottage cheese'), N('100 g', '100 g'), 98, 'check', ['lactose'], N('Some lactose. Small portions are usually fine.', 'Litt laktose. Små porsjoner går som regel fint.')),
   F('butter', N('Butter', 'Smør'), N('1 tbsp (14 g)', '1 ss (14 g)'), 100),
   F('lf-sourcream', N('Lactose-free sour cream', 'Laktosefri rømme'), N('2 tbsp (30 g)', '2 ss (30 g)'), 55),
+  F('lf-cream', N('Lactose-free cream', 'Laktosefri fløte'), N('2 tbsp (30 g)', '2 ss (30 g)'), 100),
   F('icecream', N('Ice cream', 'Iskrem'), N('2 scoops (100 g)', '2 kuler (100 g)'), 210, 'high', ['lactose', 'fatty'], N('Lactose.', 'Laktose.')),
 
   // Fruit & berries

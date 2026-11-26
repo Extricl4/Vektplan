@@ -1,9 +1,11 @@
 import { S, peekDay, day, mutate, hasJournal, addWeight, latestWeight } from '../store.js';
 import { analyze, patternText, symptomLabel, diarySummary } from '../patterns.js';
 import { hasAI, deepPatterns } from '../ai.js';
-import { tr, n1, longDate, shortDate, dayShort } from '../i18n.js';
+import { tr, n0, n1, longDate, shortDate, dayShort } from '../i18n.js';
 import { icon, tabbar, weightChart, openSheet, closeSheet, toast, sparkline } from '../ui.js';
-import { esc, dayKey, addDays, parseKey, debounce, clock } from '../util.js';
+import { esc, dayKey, addDays, parseKey, debounce, clock, download } from '../util.js';
+import { lastDays, rangeStats, weeks, daySummary, hasData, historyCSV } from '../history.js';
+import { suppList, suppName, ticks } from '../supps.js';
 import { nav } from '../nav.js';
 import { hasHealth, healthDay, fmtSleep } from '../health.js';
 
@@ -15,7 +17,8 @@ const LEVELS = [
   ['energy', () => tr('Energy', 'Energi'), true],
 ];
 
-let range = '3m';
+let trange = 30;
+let listMax = 14;
 let ai = { busy: false, res: null, error: '' };
 
 function journalOf(key) {
@@ -166,27 +169,157 @@ function bmiOf(kg, cm) {
   return kg / ((cm / 100) ** 2);
 }
 
-function bodyTab() {
+function bodyCard(st) {
+  const w = latestWeight();
+  const pts = st.weightPts;
+  return `<section class="card" aria-label="${tr('Weight', 'Vekt')}">
+      <div class="row between top"><div><span class="small muted">${tr('Weight', 'Vekt')}</span>
+        <p class="num" style="font-size:34px;font-weight:700;letter-spacing:-0.02em;line-height:1.1">${w ? `${n1(w.kg)} kg` : '–'}</p>
+        ${st.weightChange != null ? `<span class="small" style="font-weight:600;color:var(--accent)">${st.weightChange >= 0 ? '+' : ''}${n1(st.weightChange)} kg ${rangeWord()}</span>` : `<span class="small muted">${tr('Weigh in once a week, same time of day', 'Vei deg en gang i uka, til samme tid')}</span>`}</div>
+        <button class="btn small primary" data-act="addW">${icon('plus', 16)} ${tr('Log weight', 'Logg vekt')}</button></div>
+      ${pts.length ? weightChart(pts, { label: tr('Weight over time', 'Vekt over tid') }) : S().weights.length ? `<p class="small muted">${tr('No weigh-ins in this period.', 'Ingen veiinger i denne perioden.')}</p>` : ''}
+      ${S().weights.length ? `<details class="wlist"><summary class="small" style="cursor:pointer;color:var(--accent);font-weight:600">${tr('All weigh-ins', 'Alle veiinger')} (${S().weights.length})</summary>
+        <div class="list">${S().weights.slice(-30).reverse().map((p) => `<button class="item" data-act="editW" data-date="${p.date}"><span class="grow">${shortDate(parseKey(p.date))}</span><span class="num" style="font-weight:600">${n1(p.kg)} kg</span>${icon('chevR', 16)}</button>`).join('')}</div></details>` : ''}
+    </section>`;
+}
+
+const RANGES = [[7, () => tr('7 days', '7 dager')], [30, () => tr('30 days', '30 dager')], [90, () => tr('3 months', '3 mnd')], [365, () => tr('1 year', '1 år')]];
+const rangeWord = () => ({ 7: tr('this week', 'denne uka'), 30: tr('in 30 days', 'på 30 dager'), 90: tr('in 3 months', 'på 3 måneder'), 365: tr('in a year', 'på et år') })[trange];
+
+// Eaten (blue) next to burned (amber) per day, or per week for long ranges.
+function barChart(items, { calm, label }) {
+  const W = 320;
+  const H = 170;
+  const padL = 34;
+  const padR = 6;
+  const padT = 10;
+  const padB = 22;
+  const hasB = !calm && items.some((i) => i.b != null);
+  const max = Math.max(calm ? 4 : 500, ...items.map((i) => Math.max(i.a || 0, hasB ? i.b || 0 : 0)));
+  const step = calm ? 2 : 500;
+  const top = Math.ceil(max / step) * step;
+  const n = items.length;
+  const gw = (W - padL - padR) / n;
+  const bw = Math.max(1.5, Math.min(14, gw * (hasB ? 0.36 : 0.6)));
+  const y = (v) => padT + (1 - v / top) * (H - padT - padB);
+  const grid = [0, top / 2, top].map((v) => `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="0" y="${(y(v) + 4).toFixed(1)}">${calm ? v : v >= 1000 ? `${n1(v / 1000)}k` : v}</text>`).join('');
+  const bars = items.map((it, i) => {
+    const gx = padL + i * gw + (gw - (hasB ? bw * 2 + 1 : bw)) / 2;
+    const r = Math.min(3, bw / 2);
+    const a = it.a ? `<rect class="bar-a" x="${gx.toFixed(1)}" y="${y(it.a).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, y(0) - y(it.a)).toFixed(1)}" rx="${r}"/>` : '';
+    const b = hasB && it.b ? `<rect class="bar-b" x="${(gx + bw + 1).toFixed(1)}" y="${y(it.b).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, y(0) - y(it.b)).toFixed(1)}" rx="${r}"/>` : '';
+    return a + b;
+  }).join('');
+  const lab = (i, anchor) => `<text x="${(padL + i * gw + gw / 2).toFixed(1)}" y="${H - 4}" text-anchor="${anchor}">${esc(items[i].label)}</text>`;
+  const xl = n <= 7 ? items.map((_, i) => lab(i, 'middle')).join('') : `${lab(0, 'start')}${lab(Math.floor(n / 2), 'middle')}${lab(n - 1, 'end')}`;
+  return `<svg class="chart" style="height:170px" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">${grid}${bars}${xl}</svg>`;
+}
+
+function habitRows(days) {
+  const long = days.length > 31;
+  const cells = long ? weeks(days).map((w) => [w.frac.food, w.frac.train, w.frac.supps]) : days.map((d) => [d.logs ? 1 : 0, d.workouts ? 1 : 0, d.suppAll ? 1 : 0]);
+  const rows = [[tr('Food logged', 'Mat logget'), 0], [tr('Trained', 'Trent'), 1]];
+  if (suppList().length) rows.push([tr('Supplements', 'Tilskudd'), 2]);
+  return rows.map(([name, i]) => `<div class="habit"><span class="tiny muted">${name}</span>
+    <div class="cells" style="grid-template-columns:repeat(${cells.length},minmax(0,1fr))">${cells.map((c) => `<i style="${c[i] ? `background:var(--accent-line);opacity:${(0.35 + 0.65 * c[i]).toFixed(2)}` : ''}"></i>`).join('')}</div></div>`).join('');
+}
+
+function summaryLine(st) {
+  const calm = S().prefs.calm;
+  const parts = [];
+  if (st.loggedDays && st.loggedDays >= st.n) parts.push(st.n > 1 ? tr(`You logged food every day (${st.n} days).`, `Du logget mat hver dag (${st.n} dager).`) : tr('You logged food today.', 'Du logget mat i dag.'));
+  else if (st.loggedDays && st.n >= 3) parts.push(tr(`You logged food on ${st.loggedDays} of ${st.n} days.`, `Du logget mat ${st.loggedDays} av ${st.n} dager.`));
+  if (st.weightChange != null && !calm) {
+    if (st.weightChange >= 0.2) parts.push(tr(`+${n1(st.weightChange)} kg. Slow and steady is exactly right.`, `+${n1(st.weightChange)} kg. Rolig og jevnt er akkurat riktig.`));
+    else if (st.weightChange <= -0.2) parts.push(tr('Weight dipped a little. That happens (water, a rough stomach week). A shake or a booster on a few meals can nudge it back up.', 'Vekta gikk litt ned. Det skjer (vann, en tung mageuke). En shake eller litt ekstra på noen måltider kan dytte den opp igjen.'));
+    else parts.push(tr('Weight is steady.', 'Vekta er stabil.'));
+  }
+  if (st.workouts) parts.push(tr(`${st.workouts} workout${st.workouts > 1 ? 's' : ''}, nice.`, `${st.workouts} økt${st.workouts > 1 ? 'er' : ''}, fint.`));
+  if (!parts.length) return tr('Your days show up here as you log food, training, supplements and weight. It all stays on this phone.', 'Dagene dine dukker opp her etter hvert som du logger mat, trening, tilskudd og vekt. Alt blir liggende på denne telefonen.');
+  return parts.join(' ');
+}
+
+function dayRow(d) {
+  const calm = S().prefs.calm;
+  const bits = [];
+  if (d.weight != null) bits.push(`${n1(d.weight)} kg`);
+  if (d.logs) bits.push(calm ? `${d.logs} ${tr('logged', 'logget')}` : `${n0(d.eaten)} kcal`);
+  if (!calm && d.burned != null) bits.push(`${tr('burned', 'forbrent')} ${n0(d.burned)}`);
+  return `<button class="item" data-act="day" data-k="${d.key}">
+    <span class="small" style="width:74px;flex:none"><b style="font-weight:600">${dayShort(parseKey(d.key))}</b> <span class="muted">${shortDate(parseKey(d.key))}</span></span>
+    <span class="grow small soft num" style="min-width:0">${bits.join(' · ') || '–'}</span>
+    ${d.workouts ? `<span title="${tr('Trained', 'Trent')}" style="color:var(--accent)">${icon('dumbbell', 16)}</span>` : ''}
+    ${d.suppAll ? `<span title="${tr('Supplements', 'Tilskudd')}" style="color:var(--sage)">${icon('pill', 16)}</span>` : ''}
+    ${icon('chevR', 16)}</button>`;
+}
+
+function trendsTab() {
+  const calm = S().prefs.calm;
+  const days = lastDays(trange);
+  const st = rangeStats(days);
+  const long = days.length > 31;
+  const items = long
+    ? weeks(days).map((w) => ({ a: calm ? w.logs : w.eaten, b: w.burned, label: shortDate(parseKey(w.key)) }))
+    : days.map((d) => ({ a: calm ? d.logs : d.eaten, b: d.burned, label: days.length <= 7 ? dayShort(parseKey(d.key)) : shortDate(parseKey(d.key)) }));
+  const withData = days.filter(hasData).reverse();
+  const burnedLabel = st.burnedAvg != null ? tr('Burned / day', 'Forbrent / dag') : tr('Active / day', 'Aktiv / dag');
+  const burnedVal = st.burnedAvg ?? st.activeAvg;
+  let note = '';
+  if (!calm && st.bothDays >= 2) {
+    note = tr(`On days with both numbers you ate about ${n0(st.bothEaten)} kcal and burned about ${n0(st.bothBurned)}.`, `På dager med begge tallene spiste du ca. ${n0(st.bothEaten)} kcal og forbrente ca. ${n0(st.bothBurned)}.`) + ' ' +
+      (st.bothEaten < st.bothBurned
+        ? tr('To gain weight, eating needs to be a bit above burning over time. Watch numbers are rough estimates, so your weight trend is the real answer.', 'For å gå opp må du over tid spise litt mer enn du forbrenner. Tallene fra klokka er grove anslag, så vektutviklingen er det egentlige svaret.')
+        : tr('That is the direction that builds weight. Nice.', 'Det er den retningen som bygger vekt. Fint.'));
+  } else if (!calm && st.activeAvg != null && st.burnedAvg == null) {
+    note = tr('Burned only shows active calories so far. Add Resting Energy to the Watch shortcut to see your whole day.', 'Forbrent viser bare aktive kalorier foreløpig. Legg til Kvileenergi i snarveien for å se hele dagen.');
+  }
+  return `<div class="seg" style="grid-auto-columns:minmax(0,1fr)">${RANGES.map(([n, l]) => `<button aria-pressed="${trange === n}" data-act="trange" data-n="${n}">${l()}</button>`).join('')}</div>
+    <p class="cheer-line" style="margin-top:0">${esc(summaryLine(st))}</p>
+    <div class="grid2">
+      <div class="tile"><span class="small muted">${calm ? tr('Days with food', 'Dager med mat') : tr('Eaten / day', 'Spist / dag')}</span>
+        <span class="big num">${calm ? `${st.loggedDays}/${st.n}` : st.eatenAvg != null ? n0(st.eatenAvg) : '–'}</span><span class="tiny muted">${calm ? tr('days logged', 'dager logget') : st.eatenAvg != null ? tr('kcal, on days you logged', 'kcal, dager du logget') : tr('nothing logged yet', 'ingenting logget ennå')}</span></div>
+      ${calm ? `<div class="tile"><span class="small muted">${tr('Supplements', 'Tilskudd')}</span><span class="big num">${st.suppDays}/${st.n}</span><span class="tiny muted">${tr('days all ticked', 'dager alt krysset av')}</span></div>`
+        : burnedVal != null ? `<a class="tile" href="#/health"><span class="small muted">${burnedLabel}</span><span class="big num">${n0(burnedVal)}</span><span class="tiny muted">${tr('kcal, from your Watch', 'kcal, fra klokka')}</span></a>`
+        : `<a class="tile" href="#/health"><span class="small muted">${tr('Burned', 'Forbrent')}</span><span class="big">${icon('watch', 26)}</span><span class="tiny" style="font-weight:600;color:var(--accent)">${tr('Connect your Watch', 'Koble til klokka')}</span></a>`}
+      <a class="tile" href="#/train"><span class="small muted">${tr('Training', 'Trening')}</span><span class="big num">${st.workouts}</span><span class="tiny muted">${st.trainMin ? `${st.trainMin} min ${tr('in total', 'til sammen')}` : tr('workouts', 'økter')}</span></a>
+      ${calm ? `<div class="tile"><span class="small muted">${tr('Sleep', 'Søvn')}</span><span class="big num">${st.sleepAvg != null ? fmtSleep(st.sleepAvg) : '–'}</span><span class="tiny muted">${tr('average night', 'snitt per natt')}</span></div>`
+        : `<div class="tile"><span class="small muted">${tr('Supplements', 'Tilskudd')}</span><span class="big num">${suppList().length ? `${st.suppDays}/${st.n}` : '–'}</span><span class="tiny muted">${suppList().length ? tr('days all ticked', 'dager alt krysset av') : tr('none chosen', 'ingen valgt')}</span></div>`}
+    </div>
+    ${bodyCard(st)}
+    <section class="card" aria-label="${calm ? tr('Food logged', 'Mat logget') : tr('Eaten and burned', 'Spist og forbrent')}">
+      <div class="row between"><h2 class="h3">${calm ? tr('Food logged', 'Mat logget') : tr('Eaten and burned', 'Spist og forbrent')}</h2>${long ? `<span class="tiny muted">${tr('weekly average', 'snitt per uke')}</span>` : ''}</div>
+      ${barChart(items, { calm, label: calm ? tr('Foods logged per day', 'Mat logget per dag') : tr('Calories eaten and burned per day', 'Kalorier spist og forbrent per dag') })}
+      <div class="row wrap" style="gap:14px"><span class="tiny row" style="gap:6px"><i class="sw a"></i>${calm ? tr('Things logged', 'Ting logget') : tr('Eaten', 'Spist')}</span>
+        ${!calm && items.some((i) => i.b != null) ? `<span class="tiny row" style="gap:6px"><i class="sw b"></i>${tr('Burned (Watch)', 'Forbrent (klokka)')}</span>` : ''}</div>
+      ${note ? `<p class="small soft" style="line-height:1.5">${esc(note)}</p>` : ''}
+    </section>
+    <section class="card" aria-label="${tr('Habits', 'Vaner')}">
+      <h2 class="h3">${tr('Your habits', 'Vanene dine')}</h2>
+      ${habitRows(days)}
+      ${long ? `<p class="tiny muted">${tr('One square per week. Darker = more days.', 'Én rute per uke. Mørkere = flere dager.')}</p>` : ''}
+    </section>
+    <section class="card" style="padding:6px 16px" aria-label="${tr('Day by day', 'Dag for dag')}">
+      <h2 class="h3" style="padding-top:10px">${tr('Day by day', 'Dag for dag')}</h2>
+      ${withData.length ? `<div class="list">${withData.slice(0, listMax).map(dayRow).join('')}</div>
+        ${withData.length > listMax ? `<button class="btn secondary small" style="margin:8px 0" data-act="more">${tr('Show more days', 'Vis flere dager')}</button>` : ''}`
+        : `<p class="small muted" style="padding-bottom:12px">${tr('Nothing in this period yet.', 'Ingenting i denne perioden ennå.')}</p>`}
+    </section>
+    ${watchBody()}
+    ${bmiCard()}
+    <section class="card tight">
+      <h2 class="h3">${tr('Your history', 'Historikken din')}</h2>
+      <p class="small soft" style="line-height:1.5">${tr('Every day is saved on this phone. Export it as a spreadsheet (one row per day) to keep or show your doctor.', 'Hver dag lagres på denne telefonen. Eksporter som regneark (én rad per dag) for å ta vare på det eller vise legen.')}</p>
+      <button class="btn secondary" data-act="csv">${icon('download', 18)} ${tr('Export as spreadsheet (CSV)', 'Eksporter som regneark (CSV)')}</button>
+    </section>`;
+}
+
+function bmiCard() {
   const st = S();
   const w = latestWeight();
-  const all = st.weights;
-  const cutoff = range === '1m' ? addDays(dayKey(), -31) : range === '3m' ? addDays(dayKey(), -92) : '0000';
-  const pts = all.filter((p) => p.date >= cutoff);
-  const first = all[0];
-  const change = w && first && all.length > 1 ? w.kg - first.kg : null;
   const height = st.profile.heightCm;
   const bmi = bmiOf(w?.kg, height);
   const pos = bmi ? Math.max(0, Math.min(100, ((bmi - 15) / 20) * 100)) : null;
-  return `<section class="card">
-      <div class="row between top"><div><span class="small muted">${tr('Weight', 'Vekt')}</span>
-        <p class="num" style="font-size:34px;font-weight:700;letter-spacing:-0.02em;line-height:1.1">${w ? `${n1(w.kg)} kg` : '–'}</p>
-        ${change != null ? `<span class="small" style="font-weight:600;color:var(--accent)">${change >= 0 ? '+' : ''}${n1(change)} kg ${tr('since', 'siden')} ${shortDate(parseKey(first.date))}</span>` : `<span class="small muted">${tr('Weigh in once a week, same time of day', 'Vei deg en gang i uka, til samme tid')}</span>`}</div>
-        <button class="btn small primary" data-act="addW">${icon('plus', 16)} ${tr('Log weight', 'Logg vekt')}</button></div>
-      ${all.length ? `<div class="seg" style="grid-auto-columns:minmax(0,1fr)">${[['1m', tr('1 month', '1 mnd')], ['3m', tr('3 months', '3 mnd')], ['all', tr('All', 'Alt')]].map(([id, l]) => `<button aria-pressed="${range === id}" data-act="range" data-r="${id}">${l}</button>`).join('')}</div>
-        ${pts.length ? weightChart(pts, { label: tr('Weight over time', 'Vekt over tid') }) : `<p class="small muted">${tr('No weigh-ins in this period.', 'Ingen veiinger i denne perioden.')}</p>`}` : ''}
-    </section>
-    ${watchBody()}
-    <section class="card" aria-label="${tr('BMI calculator', 'BMI-kalkulator')}">
+  return `<section class="card" aria-label="${tr('BMI calculator', 'BMI-kalkulator')}">
       <h2 class="h2">${tr('BMI calculator', 'BMI-kalkulator')}</h2>
       <div class="grid2"><div class="field"><label for="b-h">${tr('Height (cm)', 'Høyde (cm)')}</label><input id="b-h" class="input filled" type="number" inputmode="numeric" value="${height ?? ''}" data-change="height"></div>
         <div class="field"><label for="b-w">${tr('Weight (kg)', 'Vekt (kg)')}</label><input id="b-w" class="input filled" type="text" inputmode="decimal" autocomplete="off" value="${kgText(w?.kg)}" data-input="bmiW"></div></div>
@@ -195,22 +328,48 @@ function bodyTab() {
         <span id="bmi-m" class="marker" style="left:${pos ?? 0}%;${pos == null ? 'display:none' : ''}"></span>
         <div class="labels"><span style="width:17.5%">15</span><span style="width:32.5%">18.5</span><span style="width:25%">25</span><span style="width:25%">30</span></div></div>
       <p class="small soft" style="line-height:1.5">${tr('For adults, 18.5 to 24.9 is the usual healthy range. BMI is only a rough guide: your trend, strength and how you feel matter more.', 'For voksne er 18,5 til 24,9 det vanlige normalområdet. BMI er bare en grov pekepinn: utviklingen, styrken og hvordan du har det betyr mer.')}</p>
-    </section>
-    ${all.length ? `<section class="card" style="padding:4px 16px"><div class="list">${all.slice(-8).reverse().map((p) => `<button class="item" data-act="editW" data-date="${p.date}"><span class="grow">${shortDate(parseKey(p.date))}</span><span class="num" style="font-weight:600">${n1(p.kg)} kg</span>${icon('chevR', 16)}</button>`).join('')}</div></section>` : ''}`;
+    </section>`;
+}
+
+function daySheet(key) {
+  const d = daySummary(key);
+  const pd = peekDay(key);
+  const calm = S().prefs.calm;
+  const t = ticks(key);
+  const line = (l, v) => `<div class="row between"><span class="small muted">${l}</span><span class="small num" style="font-weight:600">${v}</span></div>`;
+  const logs = pd.logs.slice().sort((a, b) => a.ts - b.ts);
+  openSheet({
+    title: `${dayShort(parseKey(key))} ${shortDate(parseKey(key))}`,
+    html: `${d.weight != null ? line(tr('Weight', 'Vekt'), `${n1(d.weight)} kg`) : ''}
+      <p class="label">${tr('Food', 'Mat')}${!calm && d.logs ? ` · ${n0(d.eaten)} kcal` : ''}</p>
+      ${logs.length ? `<div class="list">${logs.map((l) => `<div class="item"><span class="small muted num" style="width:42px">${clock(l.ts)}</span><span class="grow">${esc(l.title)}</span>${calm ? '' : `<span class="small num soft">${n0(l.kcal)}</span>`}</div>`).join('')}</div>` : `<p class="small muted">${tr('Nothing logged.', 'Ingenting logget.')}</p>`}
+      <p class="label">${tr('Training', 'Trening')}</p>
+      ${d.workouts ? `<div class="list">${S().workouts.filter((w) => w.date === key).map((w) => `<div class="item">${icon('dumbbell', 18)}<span class="grow">${esc(w.name || w.wid)}</span><span class="small muted">${w.minutes} min${w.sets ? ` · ${w.sets} ${tr('sets', 'sett')}` : ''}</span></div>`).join('')}</div>` : `<p class="small muted">${tr('Rest day.', 'Hviledag.')}</p>`}
+      ${suppList().length ? `<p class="label">${tr('Supplements', 'Tilskudd')}</p><div class="chips">${suppList().map((x) => `<span class="chip ${t[x.id] ? 'on' : ''}" style="pointer-events:none">${t[x.id] ? icon('check', 14) : '–'} ${esc(suppName(x))}</span>`).join('')}</div>` : ''}
+      ${d.active != null || d.sleepMin != null || d.steps != null ? `<p class="label">Apple Watch</p><div class="col" style="gap:6px">
+        ${d.sleepMin != null ? line(tr('Sleep', 'Søvn'), fmtSleep(d.sleepMin)) : ''}
+        ${!calm && d.active != null ? line(tr('Active calories', 'Aktive kalorier'), `${n0(d.active)} kcal`) : ''}
+        ${!calm && d.basal != null ? line(tr('Resting calories', 'Hvilekalorier'), `${n0(d.basal)} kcal`) : ''}
+        ${!calm && d.burned != null ? line(tr('Burned in total', 'Forbrent totalt'), `${n0(d.burned)} kcal`) : ''}
+        ${d.steps != null ? line(tr('Steps', 'Skritt'), n0(d.steps)) : ''}</div>` : ''}
+      ${d.symptoms.length ? `<p class="label">${tr('Journal', 'Dagbok')}</p><div class="chips">${d.symptoms.map((x) => `<span class="chip" style="pointer-events:none">${esc(symptomLabel(x))}</span>`).join('')}</div>` : ''}
+      <button class="btn secondary" data-act="journal">${icon('book', 18)} ${tr('Open the journal for this day', 'Åpne dagboka for denne dagen')}</button>`,
+    actions: { journal: () => { closeSheet(true); nav.go(`progress/journal/${key}`); } },
+  });
 }
 
 export function render(ctx) {
   const [tab, arg] = ctx.params;
-  const which = tab === 'body' ? 'body' : tab === 'patterns' ? 'patterns' : 'journal';
+  const which = tab === 'journal' ? 'journal' : tab === 'patterns' ? 'patterns' : 'trends';
   const key = which === 'journal' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '') && arg <= dayKey() ? arg : dayKey();
   return `<div class="screen">
     <div class="blob b1"></div>
     <header class="head"><h1 class="h1">${tr('Progress', 'Fremgang')}</h1></header>
     <div class="seg" role="tablist">
-      <a role="tab" href="#/progress" aria-selected="${which === 'journal'}">${tr('Journal', 'Dagbok')}</a>
-      <a role="tab" href="#/progress/patterns" aria-selected="${which === 'patterns'}">${tr('Patterns', 'Mønstre')}</a>
-      <a role="tab" href="#/progress/body" aria-selected="${which === 'body'}">${tr('Body', 'Kropp')}</a></div>
-    ${which === 'journal' ? journalTab(key) : which === 'patterns' ? patternsTab() : bodyTab()}
+      <a role="tab" href="#/progress" aria-selected="${which === 'trends'}">${tr('Trends', 'Utvikling')}</a>
+      <a role="tab" href="#/progress/journal" aria-selected="${which === 'journal'}">${tr('Journal', 'Dagbok')}</a>
+      <a role="tab" href="#/progress/patterns" aria-selected="${which === 'patterns'}">${tr('Patterns', 'Mønstre')}</a></div>
+    ${which === 'journal' ? journalTab(key) : which === 'patterns' ? patternsTab() : trendsTab()}
   </div>${tabbar('progress')}`;
 }
 
@@ -287,7 +446,10 @@ export const actions = {
     ai.busy = false;
     nav.rerender();
   },
-  range: (el) => { range = el.dataset.r; nav.rerender(); },
+  trange: (el) => { trange = Number(el.dataset.n) || 30; listMax = 14; nav.rerender(); },
+  more: () => { listMax += 30; nav.rerender(); },
+  day: (el) => daySheet(el.dataset.k),
+  csv: () => download(`vektplan-days-${dayKey()}.csv`, historyCSV(), 'text/csv'),
   addW: () => weightSheet(),
   editW: (el) => weightSheet(el.dataset.date, undefined, true),
   height: (el) => {

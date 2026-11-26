@@ -13,6 +13,8 @@ import { getLang } from '../i18n.js';
 import { hasHealth, healthDay, fmtSleepCompact, sleepWindow, latestRestingHR, syncedToday, lastSync } from '../health.js';
 import { syncHealth } from './health.js';
 import { shortcutURL, markPending } from '../health.js';
+import { suppsCard, tickSupp, suppsSheet } from './supps.js';
+import { todayLine } from '../encourage.js';
 
 const LEVELS = [
   ['good', () => tr('Good', 'Bra')],
@@ -117,10 +119,10 @@ function tiles() {
   const recent = ws.slice(-10);
   const change = w && first && ws.length > 1 ? w.kg - first.kg : null;
   const weightTile = w
-    ? `<a class="tile" href="#/progress/body"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+    ? `<a class="tile" href="#/progress/trends"><span class="small muted">${tr('Weight', 'Vekt')}</span>
         <span class="big num">${n1(w.kg)} kg</span>${sparkline(recent)}
         <span class="tiny" style="font-weight:600;color:var(--accent);margin-top:auto">${change != null ? `${change >= 0 ? '+' : ''}${n1(change)} kg ${tr('since start', 'siden start')}` : tr('Your starting point', 'Startpunktet ditt')}</span></a>`
-    : `<a class="tile" href="#/progress/body"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+    : `<a class="tile" href="#/progress/trends"><span class="small muted">${tr('Weight', 'Vekt')}</span>
         <span class="big">${icon('scale', 26)}</span><span class="tiny" style="font-weight:600;color:var(--accent)">${tr('Log your weight', 'Logg vekten din')}</span></a>`;
   const act = plannedActivity(key);
   const done = workoutsOn(key);
@@ -241,9 +243,11 @@ export function render() {
     </header>
     ${installNote()}
     ${progressCard(list, t)}
+    <p class="cheer-line">${esc(todayLine(key))}</p>
     ${gentleNote(d, current)}
     ${nextCard(current, list)}
     ${tiles()}
+    ${suppsCard(key)}
     ${watchHint()}
     ${watchCard()}
     ${stomachCard(d)}
@@ -266,6 +270,8 @@ export function unmount() {
 }
 
 export const actions = {
+  supp: (el) => tickSupp(el),
+  suppEdit: () => suppsSheet(),
   ate: () => {
     const { current } = dayStatus();
     if (current) eatSheet(dayKey(), current);

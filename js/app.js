@@ -21,8 +21,10 @@ import { checkReturn } from './views/health.js';
 import * as plan from './views/plan.js';
 import * as session from './views/session.js';
 import * as fuel from './views/fuel.js';
+import * as mymeal from './views/mymeal.js';
+import * as program from './views/program.js';
 
-const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup, health, plan, session, fuel };
+const VIEWS = { today, food, recipe, log, train, workout, progress, coach, settings, setup, health, plan, session, fuel, mymeal, program };
 const app = document.getElementById('app');
 
 let current = null;

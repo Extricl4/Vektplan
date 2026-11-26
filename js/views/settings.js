@@ -140,7 +140,7 @@ function icsFile() {
   for (const s of activeSlots()) {
     const [h, m] = s.time.split(':');
     const title = `Vektplan · ${kindName(s.kind)}`;
-    const desc = tr('Time for a small meal. Open Vektplan to see what to eat.', 'Tid for et lite måltid. Åpne Vektplan for å se hva du skal spise.');
+    const desc = tr('Meal time is around now. Something small counts, and Vektplan has ideas if you want them.', 'Det er måltidstid omtrent nå. Noe lite teller, og Vektplan har forslag hvis du vil.');
     lines.push('BEGIN:VEVENT', `UID:vektplan-${s.id}@vektplan`, `DTSTAMP:${stamp}`, `DTSTART:${start}T${pad(+h)}${pad(+m)}00`, 'DURATION:PT15M', 'RRULE:FREQ=DAILY',
       `SUMMARY:${title}`, `DESCRIPTION:${desc}`, 'TRANSP:TRANSPARENT',
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${title}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');

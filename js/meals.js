@@ -110,16 +110,16 @@ export function swapSheet(key, slot) {
   const others = sortedMeals(myMeals().filter((m) => !mine.includes(m)));
   const myRow = (m) => `<button class="item" data-act="pickMy" data-id="${m.id}" data-name="${esc(norm(m.name))}">
       <span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(m.name)}</span>
-      <span class="s">${tr('My food', 'Min mat')}${kcalLine(m) ? ` · ${kcalLine(m)}` : ''}</span></span></button>`;
+      <span class="s">${tr('My meals', 'Mine måltider')}${kcalLine(m) ? ` · ${kcalLine(m)}` : ''}</span></span></button>`;
   openSheet({
     title: `${tr('Change', 'Endre')} ${kindName(slot.kind).toLowerCase()}`,
     html: `<div class="search">${icon('search', 18)}<label class="sr-only" for="swap-q">${tr('Search', 'Søk')}</label>
       <input id="swap-q" class="input" type="search" placeholder="${tr('Search your food and recipes', 'Søk i maten din og oppskrifter')}" data-input="filter" autocomplete="off"></div>
       <button class="item" data-act="free" style="border:1px dashed var(--line);border-radius:16px"><span class="plate-mini" aria-hidden="true">${icon('sparkle', 18)}</span>
         <span class="grow"><span class="t" style="display:block">${tr('No idea needed, I choose myself', 'Trenger ikke forslag, jeg velger selv')}</span><span class="s">${tr('Just keep the time', 'Bare behold tidspunktet')}</span></span></button>
-      <p class="label">${tr('My food', 'Min mat')}</p>
+      <p class="label">${tr('My meals', 'Mine måltider')}</p>
       ${mine.length || others.length ? `<div class="list" id="swap-m">${[...mine, ...others].map(myRow).join('')}</div>` : `<p class="small muted">${tr('Save the food you actually like to eat, and it shows up here.', 'Lagre maten du faktisk liker å spise, så dukker den opp her.')}</p>`}
-      <button class="btn outline small" data-act="newMy">${icon('plus', 16)} ${tr('Add your own food', 'Legg til din egen mat')}</button>
+      <button class="btn outline small" data-act="newMy">${icon('plus', 16)} ${tr('New meal', 'Nytt måltid')}</button>
       <p class="label">${tr('Recipes good for', 'Oppskrifter som passer til')} ${kindName(slot.kind).toLowerCase()}</p>
       <div class="list" id="swap-a">${pool.map((id) => recipeById(id)).filter(Boolean).map(row).join('')}</div>
       <p class="label">${tr('Everything else', 'Alt annet')}</p>
@@ -129,7 +129,7 @@ export function swapSheet(key, slot) {
       pick: (el) => { setPlan(key, slot.id, { rid: el.dataset.id }); closeSheet(); toast(tr('Plan updated.', 'Planen er oppdatert.')); nav.rerender(); },
       pickMy: (el) => { setPlan(key, slot.id, { my: el.dataset.id }); closeSheet(); toast(tr('Plan updated.', 'Planen er oppdatert.')); nav.rerender(); },
       free: () => { setPlan(key, slot.id, { free: true }); closeSheet(); toast(tr('Okay, you choose.', 'Greit, du velger.')); nav.rerender(); },
-      newMy: () => myMealSheet(null, { prefill: { when: [whenOf(slot.kind)] }, onSaved: (m) => { if (m) { const saved = myMeals().find((x) => x.name === m.name); if (saved) setPlan(key, slot.id, { my: saved.id }); } nav.rerender(); } }),
+      newMy: () => { closeSheet(true); myMealSheet(null, { prefill: { when: [whenOf(slot.kind)], plan: { key, slotId: slot.id } } }); },
       clear: () => { mutate(() => { delete day(key).plan[slot.id]; }); closeSheet(); nav.rerender(); },
       filter: (el, e, sheet) => {
         const q = norm(el.value.trim());
@@ -242,12 +242,12 @@ export function eatSheet(key, entry, preselect = null) {
   const list = () => `${!info.free ? `<div class="list"><button class="item" data-act="choose" data-k="idea" data-id="">
       ${info.recipe ? plate(info.recipe, 44) : `<span class="plate-mini" aria-hidden="true">${icon(info.mine ? 'heart' : 'sparkle', 18)}</span>`}
       <span class="grow"><span class="t" style="display:block;font-weight:600">${esc(info.title)}</span><span class="s">${tr('The idea for now', 'Forslaget for nå')}${!calm && info.kcal ? ` · ${n0(info.kcal)} kcal` : ''}</span></span>${icon('chevR', 16)}</button></div>` : ''}
-    ${mine.length ? `<p class="label">${tr('My food', 'Min mat')}</p><div class="list">${mine.map((m) => `<button class="item" data-act="choose" data-k="my" data-id="${m.id}">
+    ${mine.length ? `<p class="label">${tr('My meals', 'Mine måltider')}</p><div class="list">${mine.map((m) => `<button class="item" data-act="choose" data-k="my" data-id="${m.id}">
       <span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(m.name)}</span>${kcalLine(m) ? `<span class="s">${kcalLine(m)}</span>` : ''}</span>${icon('chevR', 16)}</button>`).join('')}</div>` : ''}
     ${recent.length ? `<p class="label">${tr('Recently', 'Nylig')}</p><div class="list">${recent.map((l) => `<button class="item" data-act="choose" data-k="recent" data-id="${l.id}">
       <span class="plate-mini" aria-hidden="true">${icon('clock', 18)}</span><span class="grow"><span class="t" style="display:block">${esc(l.title)}</span>${calm ? '' : `<span class="s">${n0(l.baseKcal ?? l.kcal)} kcal</span>`}</span>${icon('chevR', 16)}</button>`).join('')}</div>` : ''}
     <div class="btns"><button class="btn secondary" data-act="other">${icon('search', 18)} ${tr('Something else', 'Noe annet')}</button>
-      <button class="btn secondary" data-act="newMy">${icon('plus', 18)} ${tr('New own food', 'Ny egen mat')}</button></div>`;
+      <button class="btn secondary" data-act="newMy">${icon('plus', 18)} ${tr('New meal', 'Nytt måltid')}</button></div>`;
   const draw = () => (chosen ? pick() : list());
   openSheet({
     title: tr('What did you eat?', 'Hva spiste du?'),
@@ -270,7 +270,7 @@ export function eatSheet(key, entry, preselect = null) {
         nav.rerender();
       },
       other: () => { closeSheet(true); nav.go(`log/${entry.slot.id}`); },
-      newMy: () => myMealSheet(null, { prefill: { when: [whenOf(entry.slot.kind)] }, onSaved: () => setTimeout(() => eatSheet(key, entry), 220) }),
+      newMy: () => { closeSheet(true); myMealSheet(null, { prefill: { when: [whenOf(entry.slot.kind)], logTo: { key, slotId: entry.slot.id } } }); },
     },
   });
 }

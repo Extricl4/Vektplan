@@ -5,8 +5,9 @@ import { tr, L, dayShort } from '../i18n.js';
 import { icon, openSheet, closeSheet, toast, confirmSheet } from '../ui.js';
 import { GROUPS, GROUP_ORDER, EQUIP } from '../data/exercises.js';
 import {
-  sessionById, updateSession, deleteSession, refillSession, setDay, training, getEx, exName, groupName, pickList, addCustomExercise, available, bestSet,
+  sessionById, updateSession, deleteSession, refillSession, setDay, training, getEx, exName, groupName, pickList, addCustomExercise, available, bestSet, resolveList,
 } from '../training.js';
+import { REPS } from '../data/programs.js';
 import { esc, parseKey, addDays, startOfWeek, dayKey } from '../util.js';
 import { nav } from '../nav.js';
 
@@ -85,11 +86,12 @@ function setsRepsSheet(sid, i) {
   if (!item) return;
   const ex = getEx(item.id);
   const isTime = ex?.mode === 'time';
-  const v = { sets: item.sets || 3, reps: item.reps || ex?.def || 10 };
+  const ranged = !isTime && item.lo && item.hi;
+  const v = { sets: item.sets || 3, reps: ranged ? item.hi : item.reps || ex?.def || 10 };
   const draw = () => `<div class="row between"><span class="h3">${tr('Sets', 'Sett')}</span>
       <div class="stepper"><button data-act="d" data-k="sets" data-d="-1" aria-label="${tr('Fewer', 'Færre')}">−</button><span class="v num">${v.sets}</span><button data-act="d" data-k="sets" data-d="1" aria-label="${tr('More', 'Flere')}">+</button></div></div>
     <div class="row between"><span class="h3">${isTime ? tr('Seconds', 'Sekunder') : tr('Reps', 'Reps')}</span>
-      <div class="stepper"><button data-act="d" data-k="reps" data-d="${isTime ? -5 : -1}" aria-label="${tr('Fewer', 'Færre')}">−</button><span class="v num">${v.reps}</span><button data-act="d" data-k="reps" data-d="${isTime ? 5 : 1}" aria-label="${tr('More', 'Flere')}">+</button></div></div>
+      <div class="stepper"><button data-act="d" data-k="reps" data-d="${isTime ? -5 : -1}" aria-label="${tr('Fewer', 'Færre')}">−</button><span class="v num">${ranged ? `${Math.max(1, v.reps - (item.hi - item.lo))}–${v.reps}` : v.reps}</span><button data-act="d" data-k="reps" data-d="${isTime ? 5 : 1}" aria-label="${tr('More', 'Flere')}">+</button></div></div>
     <p class="tiny muted">${tr('For muscle: 8–12 reps where the last two feel hard but clean. 2 sets is plenty while you are eating little.', 'For muskler: 8–12 reps der de to siste føles tunge men fine. 2 sett holder mens du spiser lite.')}</p>
     <button class="btn primary" data-act="ok">${tr('Done', 'Ferdig')}</button>`;
   openSheet({
@@ -102,7 +104,12 @@ function setsRepsSheet(sid, i) {
         sheet.querySelector('.col').innerHTML = draw();
       },
       ok: () => {
-        updateSession(sid, (x) => { x.ex[i].sets = v.sets; x.ex[i].reps = v.reps; });
+        updateSession(sid, (x) => {
+          const it = x.ex[i];
+          it.sets = v.sets;
+          it.reps = v.reps;
+          if (ranged) { it.lo = Math.max(1, v.reps - (item.hi - item.lo)); it.hi = v.reps; }
+        });
         closeSheet();
         nav.rerender();
       },
@@ -137,13 +144,15 @@ export function render() {
 
     <section class="card" aria-label="${tr('Exercises', 'Øvelser')}">
       <div class="row between"><h2 class="h3">${tr('Exercises', 'Øvelser')}</h2><span class="small muted">${s.ex.length}</span></div>
-      ${s.ex.length ? `<div class="exlist">${s.ex.map((e, i) => {
+      ${s.ex.length ? `<div class="exlist">${s.ex.map((e0, i) => {
+        const shown = resolveList(s.ex, training().place || 'home');
+        const e = shown.length === s.ex.length ? shown[i] : e0;
         const ex = getEx(e.id);
         const best = bestSet(e.id);
         return `<div class="exrow"><span class="n">${i + 1}</span>
           <div class="grow" style="min-width:0"><p style="font-weight:600;line-height:1.3">${esc(exName(e.id))}</p>
             <p class="tiny muted">${esc((ex?.groups || []).slice(0, 2).map(groupName).join(' · '))}${best ? ` · ${tr('best', 'beste')} ${best.kg} kg` : ''}</p></div>
-          <button class="btn tiny secondary num" data-act="sr" data-i="${i}">${e.sets} × ${e.reps}${ex?.mode === 'time' ? 's' : ''}</button>
+          <button class="btn tiny secondary num" data-act="sr" data-i="${i}">${e.sets} × ${e.lo && e.hi && ex?.mode !== 'time' ? `${e.lo}–${e.hi}` : e.reps}${ex?.mode === 'time' ? 's' : ''}</button>
           <div class="col" style="gap:2px"><button class="mini" data-act="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="${tr('Move up', 'Flytt opp')}">${icon('chevL', 14, 'style="transform:rotate(90deg)"')}</button>
             <button class="mini" data-act="down" data-i="${i}" ${i === s.ex.length - 1 ? 'disabled' : ''} aria-label="${tr('Move down', 'Flytt ned')}">${icon('chevD', 14)}</button></div>
           <button class="mini" data-act="rm" data-i="${i}" aria-label="${tr('Remove', 'Fjern')}">${icon('x', 15)}</button></div>`;
@@ -216,7 +225,8 @@ export const actions = {
       onPick: (id) => {
         const ex = getEx(id);
         const t = training();
-        updateSession(sid, (x) => { x.ex.push({ id, sets: t.level === 'normal' ? 3 : 2, reps: ex?.def || 10 }); });
+        const r = REPS[t.program?.reps] || null;
+        updateSession(sid, (x) => { x.ex.push({ id, sets: t.level === 'normal' ? 3 : 2, reps: r && ex?.mode !== 'time' ? r.hi : ex?.def || 10, ...(r ? { lo: r.lo, hi: r.hi } : {}) }); });
         toast(tr(`${exName(id)} added.`, `${exName(id)} er lagt til.`));
         nav.rerender();
       },

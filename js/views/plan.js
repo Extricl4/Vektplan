@@ -2,7 +2,8 @@
 import { S, mutate } from '../store.js';
 import { tr, L, dayShort } from '../i18n.js';
 import { icon, openSheet, closeSheet, toast, confirmSheet } from '../ui.js';
-import { PLACES, GROUP_ORDER } from '../data/exercises.js';
+import { PLACES, PLACE_ORDER, GROUP_ORDER } from '../data/exercises.js';
+import { equipSheet } from './program.js';
 import {
   SPLITS, LENGTHS, LEVELS, REST_MODES, buildPlan, savePlan, programReady, training, sessions, sessionById, exName, groupName, groupsText,
   addSession, setDay, setExtra, workoutDef, suggest,
@@ -61,7 +62,8 @@ function wizStep() {
         <div class="col">${Object.entries(LEVELS).map(([k, v]) => choice('level', k, w.level === k, esc(L(v.name)), esc(L(v.sub)), k === 'gentle' ? ` <span class="badge accent" style="margin-left:6px">${tr('Recommended', 'Anbefalt')}</span>` : '')).join('')}</div>`;
     case 1:
       return `<h1 class="h1" style="font-size:28px">${tr('Where do you train?', 'Hvor trener du?')}</h1>
-        <div class="col">${Object.entries(PLACES).map(([k, v]) => choice('place', k, w.place === k, esc(L(v.name)), esc(L(v.sub)))).join('')}</div>`;
+        <div class="col">${PLACE_ORDER.map((k) => choice('place', k, w.place === k, esc(L(PLACES[k].name)), esc(L(PLACES[k].sub)))).join('')}</div>
+        <button class="link-btn" data-act="equip" style="align-self:flex-start">${icon('dumbbell', 16)} ${tr('Choose your equipment', 'Velg utstyret ditt')}</button>`;
     case 2:
       return `<h1 class="h1" style="font-size:28px">${tr('Which days?', 'Hvilke dager?')}</h1>
         <p class="soft">${w.level === 'gentle' ? tr('2 or 3 days is plenty. Muscles grow on the days in between.', '2 eller 3 dager holder. Musklene vokser dagene imellom.') : tr('3 to 4 days is a good start.', '3 til 4 dager er en god start.')}</p>
@@ -160,7 +162,8 @@ function overview() {
       <p class="label">${tr('Rest between sets', 'Pause mellom sett')}</p>
       <div class="seg">${[60, 90, 120].map((v) => `<button aria-pressed="${(t.restSec || 90) === v}" data-act="setRest" data-v="${v}">${v === 60 ? '1 min' : v === 90 ? '1½ min' : '2 min'}</button>`).join('')}</div>
       <p class="label">${tr('Where you train', 'Hvor du trener')}</p>
-      <div class="seg">${Object.entries(PLACES).map(([k, v]) => `<button aria-pressed="${t.place === k}" data-act="setPlace" data-v="${k}">${k === 'home' ? tr('Home', 'Hjemme') : k === 'dumbbells' ? tr('Dumbbells', 'Manualer') : tr('Gym', 'Senter')}</button>`).join('')}</div>
+      <div class="seg">${PLACE_ORDER.map((k) => `<button aria-pressed="${t.place === k}" data-act="setPlace" data-v="${k}">${esc(L(PLACES[k].name))}</button>`).join('')}</div>
+      <button class="link-btn" data-act="equip" style="align-self:flex-start">${icon('dumbbell', 16)} ${tr('Your equipment', 'Utstyret ditt')}</button>
       <p class="tiny muted">${tr('Changing where you train only affects new suggestions. Swap single exercises in each session.', 'Endrer du hvor du trener, påvirker det bare nye forslag. Bytt enkeltøvelser i hver økt.')}</p>
     </section>
 
@@ -174,6 +177,7 @@ export function render() {
 }
 
 export const actions = {
+  equip: () => equipSheet(),
   back: () => nav.back('train'),
   wback: () => {
     if (wiz.step === 0) { wiz = null; nav.back('train'); return; }

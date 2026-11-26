@@ -135,6 +135,7 @@ const b = (s) => `<b>${s}</b>`;
 
 function guide() {
   const types = [
+    [tr('Resting Energy', 'Resting Energy (Kvileenergi)'), tr('last 7 days, group by Day', 'siste 7 dager, grupper etter dag')],
     [tr('Steps', 'Steps (Skritt)'), tr('last 7 days, group by Day', 'siste 7 dager, grupper etter dag')],
     [tr('Exercise Minutes', 'Exercise Minutes (Treningsminutter)'), tr('last 7 days, group by Day', 'siste 7 dager, grupper etter dag')],
     [tr('Resting Heart Rate', 'Resting Heart Rate (Hvilepuls)'), tr('last 7 days, no grouping', 'siste 7 dager, ingen gruppering')],

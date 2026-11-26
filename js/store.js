@@ -35,6 +35,8 @@ function defaults() {
     health: { days: {}, lastSync: null }, // Apple Watch numbers per day, from the Shortcut (js/health.js)
     myMeals: [], // your own food: { id, name, kcal, fodmap, when: [kinds], note, used, last } (js/mymeals.js)
     training: {}, // your own training plan (js/training.js); empty = the built-in rhythm
+    // Daily supplements to tick off (js/supps.js). Ticks are stored per day in days[key].supps.
+    supps: { list: [{ id: 'creatine-gummy', kind: 'creatine-gummy' }, { id: 'protein', kind: 'protein', mix: 'water' }, { id: 'vitd', kind: 'vitd' }], setup: false },
   };
 }
 
@@ -64,6 +66,13 @@ function migrate(saved) {
   if (!s.profile.heightCm) s.profile.heightCm = 194;
   if (!Array.isArray(s.myMeals)) s.myMeals = [];
   if (!s.training || typeof s.training !== 'object' || Array.isArray(s.training)) s.training = {};
+  // 1.3: "home with dumbbells" became home with dumbbells ticked as your equipment.
+  if (s.training.place === 'dumbbells') {
+    s.training.place = 'home';
+    s.training.equip = { ...(s.training.equip || {}), home: s.training.equip?.home || ['dumbbell'] };
+  }
+  if (s.training.todayPlace?.place === 'dumbbells') s.training.todayPlace.place = 'home';
+  if (!s.supps || typeof s.supps !== 'object' || !Array.isArray(s.supps.list)) s.supps = defaults().supps;
   s.schema = SCHEMA;
   return s;
 }

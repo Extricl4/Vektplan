@@ -1,5 +1,6 @@
 // Food for training: what to eat before and after, and honest notes on supplements.
 // Written for a sensitive, low-FODMAP stomach and for gaining weight. General info, not medical advice.
+import { hasSupp, isTicked, toggleSupp, suppCheer, suppList } from '../supps.js';
 import { S } from '../store.js';
 import { tr, L, n0, n1 } from '../i18n.js';
 import { icon, openSheet, closeSheet, plate, fodmapBadge } from '../ui.js';
@@ -35,16 +36,19 @@ export function refuelSheet(summary) {
   const name = S().profile.name ? `, ${esc(S().profile.name)}` : '';
   openSheet({
     title: tr(`Well done${name}`, `Bra jobba${name}`),
-    html: `<div class="wstats"><div class="wstat"><span class="tiny muted">${tr('Time', 'Tid')}</span><span class="v num">${summary.minutes} min</span></div>
+    html: `${summary.cheer ? `<p class="h3" style="line-height:1.4">${esc(summary.cheer)}</p>` : ''}
+      <div class="wstats"><div class="wstat"><span class="tiny muted">${tr('Time', 'Tid')}</span><span class="v num">${summary.minutes} min</span></div>
         <div class="wstat"><span class="tiny muted">${tr('Sets', 'Sett')}</span><span class="v num">${summary.sets}</span></div>
         <div class="wstat"><span class="tiny muted">${tr('Exercises', 'Øvelser')}</span><span class="v num">${summary.exercises}</span></div></div>
       ${summary.bests?.length ? `<div class="note">${icon('flame', 18)}<div class="grow col" style="gap:4px"><b>${tr('New best', 'Ny rekord')}</b>${summary.bests.map((b) => `<span class="small">${esc(exName(b.exId))}: ${kgFmt(b.kg)} (${tr('was', 'var')} ${kgFmt(b.prev)})</span>`).join('')}</div></div>` : ''}
       <p class="soft small" style="line-height:1.5">${tr('Your muscles grow from what you eat in the next few hours. Something small with protein is perfect, whenever you feel ready.', 'Musklene vokser av det du spiser de neste timene. Noe lite med protein er perfekt, når du føler deg klar.')}</p>
-      <div class="list">${mine.map((m) => `<button class="item" data-act="logM" data-id="${m.id}"><span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span>
+      <div class="list">${hasSupp('protein') && !isTicked('protein') ? `<button class="item" data-act="shake"><span class="plate-mini" aria-hidden="true">${icon('pill', 18)}</span>
+        <span class="grow"><span class="t" style="display:block;font-weight:600">${tr('Protein shake', 'Proteinshake')}</span><span class="s">${tr('Tick it off and log it in one tap', 'Kryss av og logg med ett trykk')}</span></span>${icon('plus', 18, 'style="color:var(--accent)"')}</button>` : ''}${mine.map((m) => `<button class="item" data-act="logM" data-id="${m.id}"><span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span>
         <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(m.name)}</span>${kcalLine(m) ? `<span class="s">${kcalLine(m)}</span>` : ''}</span>${icon('plus', 18, 'style="color:var(--accent)"')}</button>`).join('')}
         ${ideas.map((id) => recipeRow(id)).join('')}</div>
       <div class="btns"><button class="btn secondary" data-act="fuel">${icon('book', 18)} ${tr('Food for training', 'Mat og trening')}</button><button class="btn primary" data-act="close">${tr('Close', 'Lukk')}</button></div>`,
     actions: {
+      shake: () => { const r = toggleSupp(suppList().find((x) => x.kind === 'protein')?.id || 'protein'); closeSheet(); toast(suppCheer(r)); },
       logR: (el) => { closeSheet(true); logRecipeSheet(dayKey(), recipeById(el.dataset.id), null); },
       logM: (el) => {
         const m = myMeals().find((x) => x.id === el.dataset.id);
@@ -107,8 +111,8 @@ export function render() {
       'Handy when eating enough protein is hard: blend it into a smoothie. Pick <b>whey protein isolate</b> (most of the lactose is filtered out), rice protein or egg white protein. Pea protein differs a lot between brands. Avoid whey <i>concentrate</i>, inulin or chicory root fibre, and sweeteners ending in -ol (sorbitol, xylitol, maltitol). Monash or FODMAP Friendly certified is the safest bet.',
       'Lurt når det er vanskelig å få i seg nok protein: mos det i en smoothie. Velg <b>myseprotein-isolat</b> (whey isolate, mesteparten av laktosen er filtrert bort), risprotein eller eggehvite-protein. Erteprotein varierer mye mellom merker. Unngå myse<i>konsentrat</i>, inulin eller sikorirot-fiber, og søtstoffer som slutter på -ol (sorbitol, xylitol, maltitol). Monash- eller FODMAP Friendly-sertifisert er tryggest.'))}
     ${supp(tr('Creatine', 'Kreatin'), 'maybe', tr(
-      'The best-researched supplement for strength and muscle, and considered safe for healthy adults. Plain <b>creatine monohydrate</b>, a small daily dose (3–5 g) with a meal. Skip the "loading phase": large single doses are what upset stomachs. It pulls a little water into your muscles, so the scale goes up a bit, which is normal. Since your stomach has been sick for years, check with your doctor first.',
-      'Det best undersøkte tilskuddet for styrke og muskler, og regnet som trygt for friske voksne. Vanlig <b>kreatin monohydrat</b>, en liten daglig dose (3–5 g) sammen med et måltid. Dropp «ladefasen»: store enkeltdoser er det som gir vondt i magen. Det trekker litt vann inn i musklene, så vekta går litt opp, og det er normalt. Siden magen har vært syk i flere år, sjekk med legen først.'))}
+      'The best-researched supplement for strength and muscle, and considered safe for healthy adults. Plain <b>creatine monohydrate</b>, a small daily dose (3–5 g) with a meal. Skip the "loading phase": large single doses are what upset stomachs. It pulls a little water into your muscles, so the scale goes up a bit, which is normal. <b>Gummies:</b> lab tests have found many hold much less creatine than the label says, so pick a brand that is third-party tested, and check for sorbitol, maltitol or xylitol (FODMAP sweeteners). Since your stomach has been sick for years, check with your doctor first.',
+      'Det best undersøkte tilskuddet for styrke og muskler, og regnet som trygt for friske voksne. Vanlig <b>kreatin monohydrat</b>, en liten daglig dose (3–5 g) sammen med et måltid. Dropp «ladefasen»: store enkeltdoser er det som gir vondt i magen. Det trekker litt vann inn i musklene, så vekta går litt opp, og det er normalt. <b>Gummies:</b> labtester har funnet at mange har mye mindre kreatin enn det står på pakken, så velg et merke som er testet av en tredjepart, og sjekk for sorbitol, maltitol eller xylitol (FODMAP-søtstoffer). Siden magen har vært syk i flere år, sjekk med legen først.'))}
     ${supp(tr('Pre-workout', 'Pre-workout'), 'no', tr(
       'Most are built on a lot of caffeine (often more than a couple of cups of coffee per scoop), and common side effects are nausea, stomach trouble, jitters and a racing heart. Not what your stomach needs. <b>A small snack is your pre-workout.</b>',
       'De fleste er bygget på mye koffein (ofte mer enn et par kopper kaffe per skje), og vanlige bivirkninger er kvalme, mageplager, skjelving og hjertebank. Ikke det magen din trenger. <b>Et lite mellommåltid er din pre-workout.</b>'))}

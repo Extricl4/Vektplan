@@ -1,9 +1,15 @@
 {
-  "version": "1.2.0",
-  "date": "2026-11-25",
-  "notes": "Your own food (save it, log it in one tap, let the plan use it) and a calmer Today. Build your own training plan by muscle group, with a gentle level, weights and last time per exercise, and a food-for-training guide. One-tap Apple Watch sync.",
-  "notes_nb": "Din egen mat (lagre den, logg med ett trykk, la planen bruke den) og en roligere I dag. Lag din egen treningsplan etter muskelgrupper, med et skånsomt nivå, vekter og forrige gang per øvelse, og en guide til mat og trening. Apple Watch-synk med ett trykk.",
+  "version": "1.3.0",
+  "date": "2026-11-26",
+  "notes": "Big remake. Log food from ingredients with everyday amounts or grams, and save your own meals. Supplements to tick off each day (creatine, protein powder, vitamins). Trends for weight, eaten and burned, training and supplements. New beginner muscle plans that follow where you train and the equipment you have, with focus muscles, rep ranges, easier/harder versions and light days.",
+  "notes_nb": "Stor oppussing. Logg mat fra ingredienser med vanlige mengder eller gram, og lagre dine egne måltider. Kosttilskudd å krysse av hver dag (kreatin, proteinpulver, vitaminer). Utvikling for vekt, spist og forbrent, trening og tilskudd. Nye nybegynnerplaner for muskler som følger hvor du trener og utstyret du har, med fokusmuskler, repetisjonsområder, lettere/tyngre varianter og lette dager.",
   "history": [
+    {
+      "version": "1.2.0",
+      "date": "2026-11-25",
+      "notes": "Your own food (save it, log it in one tap, let the plan use it) and a calmer Today. Build your own training plan by muscle group, with a gentle level, weights and last time per exercise, and a food-for-training guide. One-tap Apple Watch sync.",
+      "notes_nb": "Din egen mat (lagre den, logg med ett trykk, la planen bruke den) og en roligere I dag. Lag din egen treningsplan etter muskelgrupper, med et skånsomt nivå, vekter og forrige gang per øvelse, og en guide til mat og trening. Apple Watch-synk med ett trykk."
+    },
     {
       "version": "1.1.1",
       "date": "2026-11-24",

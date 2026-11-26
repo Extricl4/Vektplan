@@ -1,5 +1,7 @@
 // Optional AI features, using the user's own Claude API key (stored only on this phone).
 // Calls go straight from the phone to api.anthropic.com.
+import { suppList, suppText } from './supps.js';
+import { lastDays, rangeStats } from './history.js';
 import { S, peekDay } from './store.js';
 import { workoutDef, exName, training } from './training.js';
 import { healthContext } from './health.js';
@@ -139,6 +141,12 @@ export function contextText() {
   if (plan.sessions?.length) lines.push(`His own training plan: ${plan.level || 'gentle'} level, ${plan.place || 'home'}, ${plan.sessions.map((x) => x.name).join(', ')}.`);
   const mine = (st.myMeals || []).slice(0, 12).map((m) => m.name);
   if (mine.length) lines.push(`Food he has saved as his own: ${mine.join(', ')}.`);
+  if (suppList().length) lines.push(`Supplements he takes (✓ = ticked today): ${suppText(key)}.`);
+  {
+    const wk = rangeStats(lastDays(7));
+    lines.push(`Last 7 days: food logged on ${wk.loggedDays} days${!st.prefs.calm && wk.eatenAvg != null ? `, about ${Math.round(wk.eatenAvg)} kcal/day on logged days` : ''}${!st.prefs.calm && wk.burnedAvg != null ? `, Watch says about ${Math.round(wk.burnedAvg)} kcal burned/day` : ''}, ${wk.workouts} workouts${wk.weightChange != null ? `, weight change ${wk.weightChange > 0 ? '+' : ''}${wk.weightChange.toFixed(1)} kg` : ''}.`);
+  }
+  if (plan.program) lines.push(`Program: ${plan.program.id}, focus muscles: ${(plan.program.focus || []).join(', ') || 'none'}, usual place ${plan.program.place}, equipment at home: ${(plan.equip?.home || []).join(', ') || 'body weight only'}.`);
   const watch = healthContext(key);
   if (watch) lines.push(st.prefs.calm ? watch.replace(/, active energy \d+ kcal/g, '') : watch);
   return lines.join('\n');
