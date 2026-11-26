@@ -6,7 +6,7 @@ import { RECIPES, recipeById } from '../data/recipes.js';
 import { BOOSTS } from '../data/amounts.js';
 import { SOURCE } from '../data/foodbase.js';
 import { tr, L, n0, shortDate } from '../i18n.js';
-import { icon, openSheet, closeSheet, toast } from '../ui.js';
+import { icon, toast } from '../ui.js';
 import { cheer } from '../meals.js';
 import { hasAI, estimateMeal } from '../ai.js';
 import { esc, dayKey, addDays, norm, readFileAsDataURL, shrinkImage, parseKey, nowMinutes } from '../util.js';
@@ -19,7 +19,7 @@ import { macroBar } from './charts.js';
 
 let st = null;
 function fresh(date) {
-  return { date: date || dayKey(), time: null, q: '', cat: null, cart: [], name: '', mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], focus: null };
+  return { date: date || dayKey(), time: null, q: '', cat: null, cart: [], name: '', mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], focus: null, ago: null, earlier: false };
 }
 
 export function enter(ctx) {
@@ -45,6 +45,55 @@ function whenTs() {
   d.setHours(Math.floor(m / 60), m % 60, 0, 0);
   return Math.min(d.getTime(), Date.now());
 }
+const isEarlier = () => st.earlier || st.date !== dayKey() || st.time != null;
+// Set the time from "X minutes ago" (crosses midnight into yesterday when it should).
+function setAgo(min) {
+  const d = new Date(Date.now() - min * 60000);
+  st.date = dayKey(d);
+  st.time = d.getHours() * 60 + d.getMinutes();
+  st.ago = min;
+}
+const DAY_NAMES = () => Array.from({ length: 7 }, (_, i) => {
+  const k = addDays(dayKey(), -i);
+  const d = parseKey(k);
+  const l = i === 0 ? tr('Today', 'I dag') : i === 1 ? tr('Yesterday', 'I går') : `${d.toLocaleDateString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { weekday: 'long' })} ${shortDate(d)}`;
+  return [k, l.charAt(0).toUpperCase() + l.slice(1)];
+});
+function whenSummary() {
+  if (!isEarlier()) return tr('Logged with the time right now.', 'Logges med klokkeslettet akkurat nå.');
+  const day = DAY_NAMES().find(([k]) => k === st.date)?.[1] || shortDate(parseKey(st.date));
+  const t = hhmm(st.time ?? nowMinutes());
+  return tr(`Logged as eaten: ${day.toLowerCase()} at ${t}.`, `Logges som spist: ${day.toLowerCase()} kl. ${t}.`);
+}
+
+// "When did you eat it?" right in the meal card: now, or earlier (quick picks, a day and a time).
+function whenBox() {
+  const early = isEarlier();
+  const t = hhmm(st.time ?? nowMinutes());
+  return `<div class="when-box" id="when-box">
+    <div class="row between" style="gap:10px"><span class="small" style="font-weight:600">${tr('When did you eat it?', 'Når spiste du det?')}</span></div>
+    <div class="seg"><button aria-pressed="${!early}" data-act="whenNow">${icon('clock', 15)} ${tr('Just now', 'Nå nettopp')}</button>
+      <button aria-pressed="${early}" data-act="whenEarlier">${icon('calendar', 15)} ${tr('Earlier', 'Tidligere')}</button></div>
+    ${early ? `<div class="chips">${[30, 60, 120, 180, 300].map((m) => `<button class="chip solid" aria-pressed="${st.ago === m}" data-act="whenAgo" data-v="${m}">${m < 60 ? tr(`${m} min ago`, `${m} min siden`) : tr(`${m / 60} h ago`, `${m / 60} t siden`)}</button>`).join('')}</div>
+      <div class="row" style="gap:8px">
+        <label class="field" style="flex:1.3;min-width:0"><span class="tiny muted">${tr('Day', 'Dag')}</span>
+          <select class="input" id="when-day" data-change="whenDay">${(DAY_NAMES().some(([k]) => k === st.date) ? DAY_NAMES() : [[st.date, shortDate(parseKey(st.date))], ...DAY_NAMES()]).map(([k, l]) => `<option value="${k}" ${k === st.date ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label class="field" style="flex:1;min-width:0"><span class="tiny muted">${tr('Time', 'Klokka')}</span>
+          <input class="input num" id="when-time" type="time" value="${t}" data-change="whenTime" data-input="whenTime"></label>
+      </div>` : ''}
+    <p class="tiny muted" id="when-sum">${esc(whenSummary())}</p>
+  </div>`;
+}
+
+// Changes from the day/time fields update in place, so the next tap (e.g. Log this meal) still lands.
+function refreshWhen() {
+  const sum = document.getElementById('when-sum');
+  if (sum) sum.textContent = whenSummary();
+  document.querySelectorAll('[data-act=whenAgo]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === st.ago)));
+  const chip = document.querySelector('[data-act=slot]');
+  if (chip) chip.innerHTML = `${icon('clock', 15)} ${esc(slotLabel())}`;
+}
+
 function slotLabel() {
   const today = st.date === dayKey();
   const day = today ? '' : st.date === addDays(dayKey(), -1) ? `${tr('Yesterday', 'I går')} · ` : `${shortDate(parseKey(st.date))} · `;
@@ -186,6 +235,7 @@ function mealCard() {
     ${st.unmatched.length ? `<div class="note amber">${icon('info', 18)}<div class="grow col" style="gap:6px"><span>${tr('Not found:', 'Fant ikke:')} ${st.unmatched.map((u) => `<b>${esc(u)}</b>`).join(', ')}</span>
       <div class="row wrap" style="gap:6px">${st.unmatched.map((u, i) => `<button class="btn tiny secondary" data-act="newFoodFor" data-i="${i}">${tr('Add', 'Legg til')} «${esc(u)}»</button>`).join('')}</div></div></div>` : ''}
     ${has && !calm ? `<div class="meal-total" id="meal-total">${totalHTML(total, mac)}</div>` : ''}
+    ${whenBox()}
     ${has ? `<input id="meal-name" class="input" type="text" maxlength="60" autocomplete="off" data-input="name" value="${esc(st.name)}" placeholder="${tr('Name it (optional), e.g. Beef and rice', 'Gi det et navn (valgfritt), f.eks. Biff og ris')}">
       <button class="btn primary" data-act="save" style="min-height:56px;font-size:16px">${icon('check', 18)} ${tr('Log this meal', 'Logg måltidet')}</button>` : ''}
     ${has ? boostsHTML() : ''}
@@ -368,42 +418,31 @@ async function runEstimate() {
   nav.rerender();
 }
 
-function whenSheet() {
-  const today = dayKey();
-  const yest = addDays(today, -1);
-  const draw = () => `<div class="seg"><button aria-pressed="${st.date === today}" data-act="day" data-v="${today}">${tr('Today', 'I dag')}</button>
-      <button aria-pressed="${st.date === yest}" data-act="day" data-v="${yest}">${tr('Yesterday', 'I går')}</button></div>
-    ${st.date === today ? `<div class="chips">${[[null, tr('Now', 'Nå')], [30, tr('30 min ago', '30 min siden')], [60, tr('1 hour ago', '1 time siden')], [120, tr('2 hours ago', '2 timer siden')]].map(([ago, l]) => `<button class="chip solid" aria-pressed="${ago == null ? st.time == null : false}" data-act="ago" data-v="${ago ?? ''}">${l}</button>`).join('')}</div>` : ''}
-    <div class="field"><label for="w-time">${tr('Time', 'Klokkeslett')}</label><input id="w-time" class="input" type="time" value="${hhmm(st.time ?? nowMinutes())}" data-change="t"></div>
-    <button class="btn primary" data-act="ok">${tr('Done', 'Ferdig')}</button>`;
-  openSheet({
-    title: tr('When did you eat it?', 'Når spiste du det?'),
-    html: draw(),
-    actions: {
-      day: (b, e, sheet) => { st.date = b.dataset.v; if (st.date !== today && st.time == null) st.time = nowMinutes(); sheet.querySelector('.col').innerHTML = draw(); },
-      ago: (b) => {
-        st.time = b.dataset.v ? Math.max(0, nowMinutes() - Number(b.dataset.v)) : null;
-        closeSheet(); nav.rerender();
-      },
-      t: (el) => { const [h, m] = String(el.value || '').split(':').map(Number); if (h >= 0 && m >= 0) st.time = h * 60 + m; },
-      ok: (b, e, sheet) => {
-        const v = sheet.querySelector('#w-time').value;
-        const [h, m] = String(v || '').split(':').map(Number);
-        if (h >= 0 && m >= 0) {
-          const t = h * 60 + m;
-          st.time = st.date === today && Math.abs(t - nowMinutes()) <= 1 ? null : t;
-        }
-        closeSheet(); nav.rerender();
-      },
-    },
-  });
-}
 
 
 export const actions = {
   close: () => { st = null; nav.back('today'); },
   mode: (el) => { st.mode = el.dataset.mode || null; st.error = ''; nav.rerender(); if (st.mode === 'type') setTimeout(() => document.getElementById('meal-text')?.focus(), 80); },
-  slot: () => whenSheet(),
+  slot: () => {
+    if (!isEarlier()) { st.earlier = true; if (st.time == null) setAgo(60); nav.rerender(); }
+    const box = document.getElementById('when-box');
+    box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box?.classList.add('flash'); setTimeout(() => box?.classList.remove('flash'), 900);
+  },
+  whenNow: () => { st.date = dayKey(); st.time = null; st.ago = null; st.earlier = false; nav.rerender(); },
+  whenEarlier: () => { if (!isEarlier()) { st.earlier = true; setAgo(60); } nav.rerender(); },
+  whenAgo: (el) => { setAgo(Number(el.dataset.v)); nav.rerender(); },
+  whenDay: (el) => {
+    st.date = el.value; st.ago = null; st.earlier = true;
+    if (st.time == null) st.time = nowMinutes();
+    refreshWhen();
+  },
+  whenTime: (el) => {
+    const [h, m] = String(el.value || '').split(':').map(Number);
+    if (!(h >= 0 && m >= 0)) return;
+    st.time = h * 60 + m; st.ago = null; st.earlier = true;
+    refreshWhen();
+  },
   q: (el) => { st.q = el.value; refreshResults(); },
   cat: (el) => { st.cat = st.cat === el.dataset.v ? null : el.dataset.v; refreshResults(); },
   add: (el) => { const f = foodById(el.dataset.id); if (f) addItem(foodItem(f)); },

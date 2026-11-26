@@ -1,9 +1,15 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "date": "2026-11-26",
-  "notes": "Log a meal from several ingredients with amounts (150 g beef + 50 g rice) as one meal. Nutrition for 160+ base foods from Matvaretabellen 2026. 7-day chart with protein, carbs and fat per day. Supplements count per day (3 gummies, multivitamin). Saved meals and the shopping list are gone. Paste button for Watch data on Today.",
-  "notes_nb": "Logg et måltid av flere ingredienser med mengder (150 g biff + 50 g ris) som ett måltid. Næringsinnhold for 160+ basismatvarer fra Matvaretabellen 2026. 7-dagers diagram med protein, karbo og fett per dag. Kosttilskudd telles per dag (3 gummies, multivitamin). Lagrede måltider og handlelisten er borte. Lim inn-knapp for klokkedata på I dag.",
+  "notes": "When you log a meal, choose Just now or Earlier: 30 min to 5 hours ago, or any day and time in the last week.",
+  "notes_nb": "Når du logger et måltid, velger du Nå nettopp eller Tidligere: 30 min til 5 timer siden, eller en dag og et klokkeslett den siste uka.",
   "history": [
+    {
+      "version": "1.5.0",
+      "date": "2026-11-26",
+      "notes": "Log a meal from several ingredients with amounts (150 g beef + 50 g rice) as one meal. Nutrition for 160+ base foods from Matvaretabellen 2026. 7-day chart with protein, carbs and fat per day. Supplements count per day (3 gummies, multivitamin). Saved meals and the shopping list are gone. Paste button for Watch data on Today.",
+      "notes_nb": "Logg et måltid av flere ingredienser med mengder (150 g biff + 50 g ris) som ett måltid. Næringsinnhold for 160+ basismatvarer fra Matvaretabellen 2026. 7-dagers diagram med protein, karbo og fett per dag. Kosttilskudd telles per dag (3 gummies, multivitamin). Lagrede måltider og handlelisten er borte. Lim inn-knapp for klokkedata på I dag."
+    },
     {
       "version": "1.4.0",
       "date": "2026-11-26",
