@@ -1,9 +1,15 @@
 {
-  "version": "1.5.1",
+  "version": "1.6.0",
   "date": "2026-11-26",
-  "notes": "When you log a meal, choose Just now or Earlier: 30 min to 5 hours ago, or any day and time in the last week.",
-  "notes_nb": "Når du logger et måltid, velger du Nå nettopp eller Tidligere: 30 min til 5 timer siden, eller en dag og et klokkeslett den siste uka.",
+  "notes": "Log your own training outside the plan: what you did (arms, a run, football…), how long, now or earlier, and tick the muscles and exercises. It shows in history and trends but never changes your plan.",
+  "notes_nb": "Logg egen trening utenom planen: hva du gjorde (armer, løping, fotball…), hvor lenge, nå eller tidligere, og kryss av muskler og øvelser. Den vises i historikken og utviklingen, men endrer aldri planen din.",
   "history": [
+    {
+      "version": "1.5.1",
+      "date": "2026-11-26",
+      "notes": "When you log a meal, choose Just now or Earlier: 30 min to 5 hours ago, or any day and time in the last week.",
+      "notes_nb": "Når du logger et måltid, velger du Nå nettopp eller Tidligere: 30 min til 5 timer siden, eller en dag og et klokkeslett den siste uka."
+    },
     {
       "version": "1.5.0",
       "date": "2026-11-26",

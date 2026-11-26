@@ -1,7 +1,7 @@
 /* Vektplan service worker.
    Keeps the app working offline and controls updates.
    VERSION and ASSETS are rewritten by tools/bump.py — don't edit them by hand. */
-const VERSION = '1.5.1';
+const VERSION = '1.6.0';
 const CACHE = 'vektplan-' + VERSION;
 const ASSETS = [
   './',
@@ -59,6 +59,7 @@ const ASSETS = [
   './js/views/supps.js',
   './js/views/today.js',
   './js/views/train.js',
+  './js/views/trainlog.js',
   './js/views/workout.js',
   './fonts/figtree-400.woff2',
   './fonts/figtree-500.woff2',

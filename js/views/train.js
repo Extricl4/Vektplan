@@ -15,7 +15,7 @@ import { syncHealth } from './health.js';
 import { shortcutURL, markPending } from '../health.js';
 import {
   programReady, training, sessions, workoutDef, activityName, shortName, exName, groupsText, lastLog, LEVELS, saveWorkout, kgFmt,
-  currentPlace, setTodayPlace, getEx, allowedEquip,
+  currentPlace, setTodayPlace, getEx, allowedEquip, planWorkoutsOn, ownWorkoutsOn, ownIcon,
 } from '../training.js';
 import { EQUIP } from '../data/exercises.js';
 
@@ -30,7 +30,8 @@ function weekStrip() {
     <div class="week">${Array.from({ length: 7 }, (_, i) => {
       const k = addDays(start, i);
       const act = plannedActivity(k);
-      const done = workoutsOn(k).length > 0;
+      const done = planWorkoutsOn(k).length > 0;
+      const extra = ownWorkoutsOn(k).length > 0;
       const watch = (healthDay(k)?.exerciseMin || 0) >= 20;
       const own = !!workoutDef(act)?.own;
       const ic = act === 'rest' ? '–' : own ? icon('dumbbell', 16) : act === 'strengthA' ? '<b>A</b>' : act === 'strengthB' ? '<b>B</b>' : icon(iconFor(act), 16);
@@ -38,10 +39,10 @@ function weekStrip() {
         <span class="tiny ${k === today ? '' : 'muted'}" style="font-weight:${k === today ? 700 : 500};color:${k === today ? 'var(--accent)' : ''}">${dayShort(parseKey(k))}</span>
         <span style="position:relative;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
           ${done ? 'background:var(--accent-fill);color:var(--accent-ink)' : k === today ? 'border:2px solid var(--accent-line);color:var(--ink)' : act === 'rest' ? 'background:var(--surface2);color:var(--muted)' : 'border:2px solid var(--line);color:var(--soft)'}">
-          ${done ? icon('check', 16, 'stroke-width="3"') : ic}${watch && !done ? '<i class="wdot" title="Apple Watch"></i>' : ''}</span>
+          ${done ? icon('check', 16, 'stroke-width="3"') : ic}${extra ? `<i class="odot" title="${tr('Own training', 'Egen trening')}"></i>` : watch && !done ? '<i class="wdot" title="Apple Watch"></i>' : ''}</span>
         <span class="tiny muted" style="font-size:10px;max-width:46px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortName(act))}</span></a>`;
     }).join('')}</div>
-    ${hasHealth() ? `<p class="tiny muted center" style="margin-top:4px"><i class="wdot inline"></i> ${tr('= 20+ active minutes on your Watch', '= 20+ aktive minutter på klokka')}</p>` : ''}
+    ${hasHealth() || S().workouts.some((w) => w.own) ? `<p class="tiny muted center" style="margin-top:4px">${S().workouts.some((w) => w.own) ? `<i class="odot inline"></i> ${tr('own training', 'egen trening')}` : ''}${hasHealth() && S().workouts.some((w) => w.own) ? ' · ' : ''}${hasHealth() ? `<i class="wdot inline"></i> ${tr('20+ active min on your Watch', '20+ aktive min på klokka')}` : ''}</p>` : ''}
   </section>`;
 }
 
@@ -73,15 +74,17 @@ function placeRow() {
 function todayCard() {
   const key = dayKey();
   const act = plannedActivity(key);
-  const done = workoutsOn(key);
+  const done = planWorkoutsOn(key);
+  const own = ownWorkoutsOn(key);
+  const ownLine = own.length ? `<p class="small" style="color:var(--accent);font-weight:600">${icon('check', 14, 'style="vertical-align:-2px"')} ${tr('Also logged today', 'Også logget i dag')}: ${esc(own.map((w) => `${w.name} · ${w.minutes} min`).join(', '))}</p>` : '';
   if (done.length) {
-    return `<section class="card soft"><div class="row">${icon('check', 22)}<p class="h3">${tr('Training done today', 'Trening gjort i dag')}: ${esc(done.map((w) => activityName(w.wid, w.name)).join(', '))}</p></div>
+    return `<section class="card soft"><div class="row">${icon('check', 22)}<p class="h3">${tr('Training done today', 'Trening gjort i dag')}: ${esc(done.map((w) => activityName(w.wid, w.name)).join(', '))}</p></div>${ownLine}
       <p class="small soft">${tr('Nice work. Something to eat in the next few hours helps your muscles grow.', 'Godt jobba. Litt mat de neste timene hjelper musklene å vokse.')}</p>
       <a class="link-btn" href="#/fuel">${tr('Ideas for after training', 'Forslag til etter trening')} →</a></section>`;
   }
   if (act === 'rest') {
     return `<section class="card"><span class="badge accent" style="align-self:flex-start">${tr('Today', 'I dag')}</span>
-      <h2 class="h1" style="font-size:24px">${tr('Rest day', 'Hviledag')}</h2>
+      <h2 class="h1" style="font-size:24px">${tr('Rest day', 'Hviledag')}</h2>${ownLine}
       <p class="small soft">${tr('Muscles grow while you rest and eat. Rest is part of the plan, not a break from it.', 'Muskler vokser mens du hviler og spiser. Hvile er en del av planen, ikke en pause fra den.')}</p>
       <div class="btns"><a class="btn secondary" href="#/workout/walk">${icon('walk', 18)} ${tr('Short walk', 'Kort gåtur')}</a><a class="btn secondary" href="#/workout/stretch">${icon('stretch', 18)} ${tr('Stretch', 'Tøy')}</a></div></section>`;
   }
@@ -90,7 +93,7 @@ function todayCard() {
   return `<section class="card" aria-label="${tr("Today's workout", 'Dagens økt')}">
     <div class="row between"><span class="badge accent">${tr('Today', 'I dag')}</span>
       ${def.own ? `<a class="link-btn small" href="#/session/${def.id}">${icon('pencil', 14)} ${tr('Edit', 'Endre')}</a>` : `<span class="icon-btn" style="background:var(--accent-soft);color:var(--accent)">${icon(iconFor(act))}</span>`}</div>
-    <div><h2 class="h1" style="font-size:24px">${esc(def.name)}</h2><p class="small muted">${esc(def.sub)} · ${tr('about', 'ca.')} ${def.minutes} min</p></div>
+    <div><h2 class="h1" style="font-size:24px">${esc(def.name)}</h2><p class="small muted">${esc(def.sub)} · ${tr('about', 'ca.')} ${def.minutes} min</p></div>${ownLine}
     ${def.kind === 'strength' && def.own ? placeRow() : ''}
     ${def.ex.length ? `<p class="small soft" style="line-height:1.45">${icon('dumbbell', 14, 'style="vertical-align:-2px"')} <b>${tr('You need', 'Du trenger')}:</b> ${esc(needsLine(def.ex.map((e) => e.id)))}</p>
       <p class="tiny muted">${tr('Tap an exercise to see how to do it.', 'Trykk på en øvelse for å se hvordan den gjøres.')}</p>${exercisePreview(def)}` : ''}
@@ -99,6 +102,14 @@ function todayCard() {
     ${def.kind === 'strength' ? `<p class="tiny muted">${tr('Light day = 1 set of each. Tired, queasy or short on food? It still counts.', 'Lett dag = 1 sett av hver. Sliten, kvalm eller lite mat i dag? Det teller likevel.')}</p>` : ''}
     <p class="small muted" style="line-height:1.5">${def.kind === 'strength' ? tr('Have a small snack 1–2 hours before. Stomach rough? A walk or a stretch still counts.', 'Spis noe lite 1–2 timer før. Dårlig mage? En gåtur eller tøying teller også.') : tr('Stomach rough today? Any movement counts.', 'Dårlig mage i dag? All bevegelse teller.')}</p>
   </section>`;
+}
+
+// Training outside the plan: "arms for 25 min", with the muscles you ticked.
+function ownCard() {
+  return `<a class="card tight link" href="#/trainlog" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit">
+    <span class="plate-mini" style="background:var(--accent-soft);color:var(--accent)" aria-hidden="true">${icon('plus', 20)}</span>
+    <span class="grow"><span style="display:block;font-weight:600">${tr('Log your own training', 'Logg egen trening')}</span>
+    <span class="small muted">${tr('Did something else? Arms for 25 min, a run, football… Separate from your plan.', 'Gjort noe annet? Armer i 25 min, løping, fotball… Utenom planen din.')}</span></span>${icon('chevR', 18)}</a>`;
 }
 
 function planCard() {
@@ -190,7 +201,7 @@ function others() {
       <span class="plate-mini" style="width:38px;height:38px" aria-hidden="true">${icon(ic, 20)}</span>
       <span class="h3" style="margin-top:4px">${esc(w.name)}</span><span class="tiny muted">${esc(w.sub)} · ${w.minutes} min</span></a>`;
     }).join('')}</div>
-    <button class="btn outline" data-act="other">${icon('plus', 18)} ${tr('Log another activity', 'Logg annen aktivitet')}</button>`;
+    <a class="btn outline" href="#/trainlog">${icon('plus', 18)} ${tr('Log your own training', 'Logg egen trening')}</a>`;
 }
 
 function history() {
@@ -200,9 +211,9 @@ function history() {
     <div class="row between"><h2 class="h3">${tr('History', 'Historikk')}</h2>
       <span class="small muted">${tr('This week', 'Denne uka')}: ${sum.sessions} ${sum.sessions === 1 ? tr('session', 'økt') : tr('sessions', 'økter')} · ${sum.minutes} min</span></div>
     ${list.length ? `<div class="list">${list.map((w) => `<button class="item" data-act="editW" data-id="${w.id}">
-      <span class="plate-mini" style="width:36px;height:36px" aria-hidden="true">${icon(iconFor(w.wid), 17)}</span>
-      <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(activityName(w.wid, w.name))}</span>
-      <span class="s">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${tr('sets', 'sett')}` : ''}</span></span>${icon('chevR', 16)}</button>`).join('')}</div>`
+      <span class="plate-mini" style="width:36px;height:36px;${w.own ? 'background:var(--accent-soft);color:var(--accent)' : ''}" aria-hidden="true">${icon(w.own ? ownIcon(w.type) : iconFor(w.wid), 17)}</span>
+      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(w.own ? w.name : activityName(w.wid, w.name))}${w.own ? ` <span class="badge" style="font-size:10px;padding:2px 7px;vertical-align:1px">${tr('own', 'egen')}</span>` : ''}</span>
+      <span class="s">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${tr('sets', 'sett')}` : ''}${w.own && w.muscles?.length ? ` · ${esc(w.muscles.map((m) => L(FOCUS[m]?.name || { en: m, nb: m })).join(', '))}` : ''}</span></span>${icon('chevR', 16)}</button>`).join('')}</div>`
       : `<p class="small muted">${tr('Your workouts show up here. The first one is the hardest.', 'Øktene dine dukker opp her. Den første er den tyngste.')}</p>`}
   </section>`;
 }
@@ -241,6 +252,7 @@ export function render() {
       <a class="icon-btn surface" href="${settingsHref}" aria-label="${tr('Your plan', 'Planen din')}">${icon('sliders')}</a></header>
     ${active ? `<a class="banner" href="#/workout/${active.id}" style="text-decoration:none">${icon('play', 20)}<span class="grow">${tr('Workout in progress', 'Økt pågår')}: ${esc(activityName(active.id))}. ${tr('Tap to continue.', 'Trykk for å fortsette.')}</span></a>` : ''}
     ${programReady() ? todayCard() : ''}
+    ${ownCard()}
     ${weekStrip()}
     ${planCard()}
     ${programReady() ? '' : todayCard()}
@@ -264,10 +276,10 @@ export const actions = {
   syncHealth: () => syncHealth(),
   runShortcut: () => { markPending(); location.href = shortcutURL(); },
   quickWalk: () => minutesSheet(tr('Log a walk', 'Logg en gåtur'), (m) => { saveWorkout('walk', m); toast(tr('Walk logged. Nice.', 'Gåtur logget. Fint.')); nav.rerender(); })(false),
-  other: () => minutesSheet(tr('Log an activity', 'Logg en aktivitet'), (m, a) => { saveWorkout(a, m); toast(tr('Activity logged.', 'Aktivitet logget.')); nav.rerender(); }, 30)(true),
   editW: (el) => {
     const w = S().workouts.find((x) => x.id === el.dataset.id);
     if (!w) return;
+    if (w.own) { nav.go(`trainlog/${w.id}`); return; }
     const log = w.log || {};
     openSheet({
       title: esc(activityName(w.wid, w.name)),

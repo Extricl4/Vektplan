@@ -60,6 +60,10 @@ Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
   Sessions: `{ id, name, groups, ex: [{ id, sets, reps, slot?, lo?, hi?, focus? }] }`, `schedule[weekday] = sessionId`,
   `extras[weekday] = 'walk'|'stretch'`. Empty `training.sessions` = the built-in Strength A/B rhythm.
   `workoutDef(id)` gives one shape for own sessions, built-in ones and walks. Workouts save `log[exId] = [{ r, kg }]`.
+- Own training (`js/views/trainlog.js`, routes `trainlog` and `trainlog/<id>` to edit): something done outside the plan
+  ("arms for 25 min"). Saved via `saveOwnWorkout` as a workout with `wid: 'own', own: true, type, muscles, exercises, otherEx,
+  effort, note`. It counts for history/trends/encouragement but NEVER as the planned session: use `planWorkoutsOn` for plan
+  status and `ownWorkoutsOn` for the extras (week strip shows them as a blue dot). Types are `OWN_TYPES` in `js/training.js`.
 - Programs: start2, focus3 (full body + a focus day for his chosen muscles, default biceps + core), full3, ul4.
   Focus muscles: chest, back, shoulders, biceps, triceps, legs, glutes, core (old "arms" → biceps + triceps via `normFocus`).
 - How-to for exercises: `js/data/howto.js` (what you need, steps split by "|", a tip) and `js/views/howto.js`

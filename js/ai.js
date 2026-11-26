@@ -136,7 +136,9 @@ export function contextText() {
   }
   const act = plannedActivity(key);
   const def = workoutDef(act);
-  lines.push(`Training today: planned ${def ? `${def.name}${def.ex.length ? ` (${def.ex.map((e) => exName(e.id)).join(', ')})` : ''}` : 'rest'}; ${workoutsOn(key).length ? 'done' : 'not done yet'}.`);
+  lines.push(`Training today: planned ${def ? `${def.name}${def.ex.length ? ` (${def.ex.map((e) => exName(e.id)).join(', ')})` : ''}` : 'rest'}; ${workoutsOn(key).some((w) => !w.own) ? 'done' : 'not done yet'}.`);
+  const own = S().workouts.filter((w) => w.own && w.date >= addDays(key, -6));
+  if (own.length) lines.push(`Own training he logged outside the plan (last 7 days): ${own.map((w) => `${w.date} ${w.name} ${w.minutes} min${w.muscles?.length ? ` (${w.muscles.join(', ')})` : ''}${w.effort ? `, felt ${w.effort}` : ''}`).join('; ')}.`);
   const plan = training();
   if (plan.sessions?.length) lines.push(`His own training plan: ${plan.level || 'gentle'} level, ${plan.place || 'home'}, ${plan.sessions.map((x) => x.name).join(', ')}.`);
   const mine = (st.myMeals || []).slice(0, 12).map((m) => m.name);

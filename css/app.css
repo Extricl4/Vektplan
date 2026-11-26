@@ -562,3 +562,9 @@ input[type="time"].input { min-height: 44px; padding: 8px 12px; }
 .when-box .seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .when-box .field { display: flex; flex-direction: column; gap: 4px; margin: 0; }
 .when-box select.input, .when-box input.input { min-height: 44px; }
+.odot { position: absolute; right: -1px; top: -1px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+.odot.inline { position: static; display: inline-block; vertical-align: -1px; border: none; width: 8px; height: 8px; }
+.tick-row { gap: 12px; }
+.tick-row .box { flex: none; width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--accent-mid); display: grid; place-items: center; color: var(--accent-ink); background: var(--surface); }
+.tick-row.on .box { background: var(--accent-fill); border-color: var(--accent-fill); }
+.tl-min { width: 40px; border: none; background: transparent; font: inherit; color: inherit; text-align: right; padding: 0; outline: none; }

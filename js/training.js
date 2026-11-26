@@ -436,6 +436,46 @@ export function saveWorkout(wid, minutes, sets = 0, extra = {}) {
   });
 }
 
+// ---------- Your own training (outside the plan) ----------
+// [id, name, muscles it ticks, suggested minutes]. Saved with wid 'own', so it never counts as a planned session.
+export const OWN_TYPES = [
+  ['arms', N('Arms', 'Armer'), ['biceps', 'triceps'], 25],
+  ['upper', N('Upper body', 'Overkropp'), ['chest', 'back', 'shoulders', 'biceps', 'triceps'], 40],
+  ['chest', N('Chest', 'Bryst'), ['chest', 'triceps'], 30],
+  ['back', N('Back', 'Rygg'), ['back', 'biceps'], 30],
+  ['shoulders', N('Shoulders', 'Skuldre'), ['shoulders'], 25],
+  ['legs', N('Legs', 'Bein'), ['legs', 'glutes'], 30],
+  ['core', N('Core', 'Kjerne'), ['core'], 15],
+  ['full', N('Full body', 'Hele kroppen'), ['chest', 'back', 'shoulders', 'legs', 'glutes', 'core'], 45],
+  ['walk', N('Walk', 'Gåtur'), [], 30],
+  ['run', N('Run', 'Løping'), [], 25],
+  ['cycling', N('Cycling', 'Sykling'), [], 30],
+  ['football', N('Football', 'Fotball'), [], 60],
+  ['swim', N('Swimming', 'Svømming'), [], 30],
+  ['stretch', N('Stretching / yoga', 'Tøying / yoga'), [], 15],
+];
+export const ownIcon = (type) => (type === 'walk' || type === 'run' ? 'walk' : type === 'cycling' ? 'bike' : type === 'stretch' ? 'stretch' : 'dumbbell');
+
+export function saveOwnWorkout(e) {
+  const w = {
+    id: e.id || uid(), date: e.date || dayKey(), wid: 'own', own: true, type: e.type || null, name: e.name,
+    minutes: Math.min(300, Math.max(1, Math.round(e.minutes) || 1)), sets: 0, ts: e.ts || Date.now(),
+    muscles: e.muscles || [], exercises: e.exercises || [], otherEx: e.otherEx || [], effort: e.effort || null, note: e.note || '',
+  };
+  mutate((s) => {
+    const i = s.workouts.findIndex((x) => x.id === w.id);
+    if (i >= 0) s.workouts[i] = { ...s.workouts[i], ...w };
+    else s.workouts.push(w);
+    // Keep history in time order (an "earlier" log can be older than the last one).
+    s.workouts.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  });
+  return w;
+}
+export const deleteWorkout = (id) => mutate((s) => { s.workouts = s.workouts.filter((x) => x.id !== id); });
+// Workouts from the plan (and built-in walks/stretches) vs. your own extra training.
+export const planWorkoutsOn = (key) => S().workouts.filter((w) => w.date === key && !w.own);
+export const ownWorkoutsOn = (key) => S().workouts.filter((w) => w.date === key && w.own);
+
 // New best weights in a finished workout (compared with everything before it).
 export function newBests(log, beforeTs) {
   const out = [];
