@@ -1,9 +1,15 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "date": "2026-11-26",
-  "notes": "Big remake. Log food from ingredients with everyday amounts or grams, and save your own meals. Supplements to tick off each day (creatine, protein powder, vitamins). Trends for weight, eaten and burned, training and supplements. New beginner muscle plans that follow where you train and the equipment you have, with focus muscles, rep ranges, easier/harder versions and light days.",
-  "notes_nb": "Stor oppussing. Logg mat fra ingredienser med vanlige mengder eller gram, og lagre dine egne måltider. Kosttilskudd å krysse av hver dag (kreatin, proteinpulver, vitaminer). Utvikling for vekt, spist og forbrent, trening og tilskudd. Nye nybegynnerplaner for muskler som følger hvor du trener og utstyret du har, med fokusmuskler, repetisjonsområder, lettere/tyngre varianter og lette dager.",
+  "notes": "Food is now a diary: log what you ate, how much and when, and see calories, protein, fat and carbs. The meal plan is gone; ideas sit on the side if you want one. Training: how-to for every exercise with what you need, an exercise guide, and a new Full body + focus day plan (for example biceps and core on Wednesday).",
+  "notes_nb": "Maten er nå en dagbok: logg hva du spiste, hvor mye og når, og se kalorier, protein, fett og karbohydrater. Måltidsplanen er borte; ideer ligger ved siden av hvis du vil ha en. Trening: slik gjør du hver øvelse med hva du trenger, en øvelsesguide, og en ny plan Hele kroppen + fokusdag (for eksempel biceps og kjerne på onsdag).",
   "history": [
+    {
+      "version": "1.3.0",
+      "date": "2026-11-26",
+      "notes": "Big remake. Log food from ingredients with everyday amounts or grams, and save your own meals. Supplements to tick off each day (creatine, protein powder, vitamins). Trends for weight, eaten and burned, training and supplements. New beginner muscle plans that follow where you train and the equipment you have, with focus muscles, rep ranges, easier/harder versions and light days.",
+      "notes_nb": "Stor oppussing. Logg mat fra ingredienser med vanlige mengder eller gram, og lagre dine egne måltider. Kosttilskudd å krysse av hver dag (kreatin, proteinpulver, vitaminer). Utvikling for vekt, spist og forbrent, trening og tilskudd. Nye nybegynnerplaner for muskler som følger hvor du trener og utstyret du har, med fokusmuskler, repetisjonsområder, lettere/tyngre varianter og lette dager."
+    },
     {
       "version": "1.2.0",
       "date": "2026-11-25",

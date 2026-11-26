@@ -4,6 +4,7 @@ import { S, peekDay } from './store.js';
 import { totals, workoutsOn } from './planner.js';
 import { healthDay } from './health.js';
 import { suppList } from './supps.js';
+import { dayTotals } from './nutrition.js';
 import { dayKey, addDays } from './util.js';
 
 export function daySummary(key) {
@@ -15,9 +16,11 @@ export function daySummary(key) {
   const active = h.activeKcal ?? null;
   const basal = h.basalKcal ?? null;
   const ticked = Object.keys(d.supps || {});
+  const tot = dayTotals(key);
   return {
     key,
     eaten: d.logs.reduce((a, l) => a + (l.kcal || 0), 0),
+    p: tot.p, f: tot.f, c: tot.c,
     protein: d.logs.filter((l) => (l.tags || []).includes('protein')).length,
     logs: d.logs.length,
     mealsDone: t.done,
@@ -64,6 +67,7 @@ export function rangeStats(days) {
     n: Math.max(counted.length, logged.length),
     loggedDays: logged.length,
     eatenAvg: avg(logged.map((d) => d.eaten)),
+    proteinAvg: avg(logged.map((d) => d.p)),
     burnedAvg: avg(burnedDays.map((d) => d.burned)),
     activeAvg: avg(days.filter((d) => d.active != null).map((d) => d.active)),
     bothEaten: avg(both.map((d) => d.eaten)),
@@ -105,13 +109,13 @@ export function historyCSV() {
   const st = S();
   const keys = new Set([...Object.keys(st.days || {}), ...st.weights.map((w) => w.date), ...st.workouts.map((w) => w.date), ...Object.keys(st.health?.days || {})]);
   const rows = [...keys].filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= dayKey()).sort();
-  const head = ['date', 'weight_kg', 'eaten_kcal', 'foods_logged', 'meals_done', 'active_kcal', 'resting_kcal', 'burned_kcal', 'steps', 'sleep_hours', 'workouts', 'training_min', 'supplements_ticked', 'stomach', 'symptoms', 'food'];
+  const head = ['date', 'weight_kg', 'eaten_kcal', 'protein_g', 'fat_g', 'carbs_g', 'foods_logged', 'meals_done', 'active_kcal', 'resting_kcal', 'burned_kcal', 'steps', 'sleep_hours', 'workouts', 'training_min', 'supplements_ticked', 'stomach', 'symptoms', 'food'];
   const lines = [head.join(',')];
   for (const k of rows) {
     const s = daySummary(k);
     if (!hasData(s)) continue;
     const foods = peekDay(k).logs.map((l) => l.title).join(' | ');
-    lines.push([k, s.weight, s.logs ? Math.round(s.eaten) : '', s.logs, s.mealsDone, s.active, s.basal, s.burned, s.steps, s.sleepMin != null ? (s.sleepMin / 60).toFixed(1) : '', s.workouts, s.trainMin || '', s.suppDone, s.stomach, s.symptoms.join(' '), foods].map(csvCell).join(','));
+    lines.push([k, s.weight, s.logs ? Math.round(s.eaten) : '', s.logs ? Math.round(s.p) : '', s.logs ? Math.round(s.f) : '', s.logs ? Math.round(s.c) : '', s.logs, s.mealsDone, s.active, s.basal, s.burned, s.steps, s.sleepMin != null ? (s.sleepMin / 60).toFixed(1) : '', s.workouts, s.trainMin || '', s.suppDone, s.stomach, s.symptoms.join(' '), foods].map(csvCell).join(','));
   }
   return lines.join('\n');
 }

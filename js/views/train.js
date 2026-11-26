@@ -3,8 +3,9 @@ import { S, mutate } from '../store.js';
 import { plannedActivity, workoutsOn, weekSummary } from '../planner.js';
 import { OTHER_ACTIVITIES } from '../data/workouts.js';
 import { PLACES, PLACE_ORDER } from '../data/exercises.js';
-import { PROGRAMS, PROGRAM_ORDER, FOCUS } from '../data/programs.js';
+import { PROGRAMS, PROGRAM_ORDER, FOCUS, normFocus } from '../data/programs.js';
 import { equipSheet } from './program.js';
+import { howToSheet, needsLine } from './howto.js';
 import { tr, L, dayShort, shortDate, n0, n1 } from '../i18n.js';
 import { icon, tabbar, openSheet, closeSheet, toast } from '../ui.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey } from '../util.js';
@@ -54,8 +55,8 @@ function exercisePreview(def) {
   return `<div class="list">${def.ex.slice(0, 8).map((e) => {
     const last = lastLog(e.id);
     const top = last ? Math.max(0, ...last.sets.map((x) => x.kg || 0)) : 0;
-    return `<div class="item" style="justify-content:space-between;gap:10px"><span style="min-width:0">${e.focus ? '<span class="dot" style="background:var(--accent-line);display:inline-block;margin-right:6px;vertical-align:1px"></span>' : ''}${esc(exName(e.id))}</span>
-      <span class="small muted num" style="white-space:nowrap">${goalText(e)}${top ? ` · ${kgFmt(top)}` : ''}</span></div>`;
+    return `<button class="item" data-act="how" data-id="${esc(e.id)}" style="justify-content:space-between;gap:10px"><span class="howrow"><span class="q" aria-hidden="true">?</span><span style="min-width:0">${e.focus ? '<span class="dot" style="background:var(--accent-line);display:inline-block;margin-right:6px;vertical-align:1px"></span>' : ''}${esc(exName(e.id))}</span></span>
+      <span class="small muted num" style="white-space:nowrap">${goalText(e)}${top ? ` · ${kgFmt(top)}` : ''}</span></button>`;
   }).join('')}</div>`;
 }
 
@@ -91,7 +92,8 @@ function todayCard() {
       ${def.own ? `<a class="link-btn small" href="#/session/${def.id}">${icon('pencil', 14)} ${tr('Edit', 'Endre')}</a>` : `<span class="icon-btn" style="background:var(--accent-soft);color:var(--accent)">${icon(iconFor(act))}</span>`}</div>
     <div><h2 class="h1" style="font-size:24px">${esc(def.name)}</h2><p class="small muted">${esc(def.sub)} · ${tr('about', 'ca.')} ${def.minutes} min</p></div>
     ${def.kind === 'strength' && def.own ? placeRow() : ''}
-    ${def.ex.length ? exercisePreview(def) : ''}
+    ${def.ex.length ? `<p class="small soft" style="line-height:1.45">${icon('dumbbell', 14, 'style="vertical-align:-2px"')} <b>${tr('You need', 'Du trenger')}:</b> ${esc(needsLine(def.ex.map((e) => e.id)))}</p>
+      <p class="tiny muted">${tr('Tap an exercise to see how to do it.', 'Trykk på en øvelse for å se hvordan den gjøres.')}</p>${exercisePreview(def)}` : ''}
     <div class="btns"><a class="btn primary" href="#/workout/${act}">${icon('play', 18)} ${tr('Start', 'Start')}</a>
       ${def.kind === 'strength' ? `<a class="btn secondary" href="#/workout/${act}/light">${tr('Light day', 'Lett dag')}</a>` : act !== 'walk' ? `<a class="btn secondary" href="#/workout/walk">${tr('Walk instead', 'Gå i stedet')}</a>` : `<button class="btn secondary" data-act="quickWalk">${tr('Log a walk', 'Logg en gåtur')}</button>`}</div>
     ${def.kind === 'strength' ? `<p class="tiny muted">${tr('Light day = 1 set of each. Tired, queasy or short on food? It still counts.', 'Lett dag = 1 sett av hver. Sliten, kvalm eller lite mat i dag? Det teller likevel.')}</p>` : ''}
@@ -227,7 +229,7 @@ export function render() {
   const active = S().activeWorkout;
   const t = training();
   const prog = t.program && PROGRAMS[t.program.id];
-  const focus = (t.program?.focus || []).filter((f) => FOCUS[f]).map((f) => L(FOCUS[f].name));
+  const focus = normFocus(t.program?.focus).map((f) => L(FOCUS[f].name));
   const eyebrow = programReady()
     ? [prog ? L(prog.name) : '', esc(L(LEVELS[t.level]?.name || LEVELS.gentle.name)), focus.length ? `${tr('focus', 'fokus')}: ${esc(focus.join(', ').toLowerCase())}` : ''].filter(Boolean).join(' · ')
     : tr('Gentle beginner plan', 'Rolig nybegynnerplan');
@@ -238,10 +240,15 @@ export function render() {
       <h1 class="h1">${tr('Train', 'Trening')}</h1></div>
       <a class="icon-btn surface" href="${settingsHref}" aria-label="${tr('Your plan', 'Planen din')}">${icon('sliders')}</a></header>
     ${active ? `<a class="banner" href="#/workout/${active.id}" style="text-decoration:none">${icon('play', 20)}<span class="grow">${tr('Workout in progress', 'Økt pågår')}: ${esc(activityName(active.id))}. ${tr('Tap to continue.', 'Trykk for å fortsette.')}</span></a>` : ''}
+    ${programReady() ? todayCard() : ''}
     ${weekStrip()}
     ${planCard()}
-    ${todayCard()}
+    ${programReady() ? '' : todayCard()}
     ${rulesCard()}
+    <a class="card tight link" href="#/guide" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit">
+      <span class="plate-mini" aria-hidden="true">${icon('book', 18)}</span>
+      <span class="grow"><span style="display:block;font-weight:600">${tr('Exercise guide', 'Øvelsesguide')}</span>
+      <span class="small muted">${tr('How to do every exercise, and what you need', 'Hvordan du gjør hver øvelse, og hva du trenger')}</span></span>${icon('chevR', 18)}</a>
     ${fuelCard()}
     ${watchCard()}
     ${mySessions()}
@@ -253,6 +260,7 @@ export function render() {
 export const actions = {
   place: (el) => { setTodayPlace(el.dataset.v); toast(tr('Exercises updated for today.', 'Øvelsene er tilpasset i dag.'), 1600); nav.rerender(); },
   equip: () => equipSheet(),
+  how: (el) => howToSheet(el.dataset.id),
   syncHealth: () => syncHealth(),
   runShortcut: () => { markPending(); location.href = shortcutURL(); },
   quickWalk: () => minutesSheet(tr('Log a walk', 'Logg en gåtur'), (m) => { saveWorkout('walk', m); toast(tr('Walk logged. Nice.', 'Gåtur logget. Fint.')); nav.rerender(); })(false),

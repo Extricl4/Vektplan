@@ -1,6 +1,7 @@
 // Kind, specific words about how today is going. Never guilt, never "you should have".
 import { S, latestWeight } from './store.js';
-import { totals, workoutsOn } from './planner.js';
+import { workoutsOn } from './planner.js';
+import { dayTotals, proteinGoal } from './nutrition.js';
 import { suppList, allDone } from './supps.js';
 import { tr, n1 } from './i18n.js';
 import { dayKey, addDays, nowMinutes, dayNum } from './util.js';
@@ -18,14 +19,17 @@ export function recentGain(days = 21) {
 }
 
 export function todayLine(key = dayKey()) {
-  const t = totals(key);
+  const tt = dayTotals(key);
+  const t = { logs: tt.n };
+  const goal = proteinGoal();
   const trained = workoutsOn(key).length > 0;
   const supps = suppList().length > 0 && allDone(key);
   const now = nowMinutes();
   const gain = recentGain();
   const tail = supps ? ` ${tr('Supplements done too.', 'Tilskudd er gjort også.')}` : '';
 
-  if (t.total && t.done >= t.total) return tr('Every meal done today. Really well done.', 'Alle måltider gjort i dag. Skikkelig bra jobba.') + tail;
+  if (goal && tt.p >= goal) return tr('Protein goal reached today. Your muscles have what they need.', 'Proteinmålet er nådd i dag. Musklene har det de trenger.') + tail;
+  if (t.logs >= 5) return tr(`You have eaten ${t.logs} times today. Small and often is exactly how gaining works.`, `Du har spist ${t.logs} ganger i dag. Lite og ofte er akkurat sånn man går opp.`) + tail;
   if (trained && t.logs) return tr('You trained and you are eating. That is exactly how muscle grows.', 'Du har trent og du spiser. Det er akkurat sånn muskler vokser.') + tail;
   if (trained) return tr('Nice workout. Something to eat in the next hour or two helps your muscles grow.', 'Fin økt. Litt mat i løpet av en time eller to hjelper musklene å vokse.') + tail;
   if (t.logs) {

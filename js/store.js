@@ -18,7 +18,7 @@ function defaults() {
   return {
     schema: SCHEMA,
     created: dayKey(),
-    profile: { name: 'Emil', heightCm: 194, goalKcal: null, onboarded: false },
+    profile: { name: 'Emil', heightCm: 194, goalKcal: null, goalProtein: null, onboarded: false },
     // planSource: where meal ideas come from: 'auto' (mix once you have own food), 'recipes', 'mix', 'mine', 'free'.
     prefs: { lang: 'en', theme: 'light', calm: false, restSec: 60, planSource: 'auto', watchHint: true, shortcutName: 'Vektplan Health' },
     slots: DEFAULT_SLOTS.map((s) => ({ ...s })),
@@ -30,7 +30,7 @@ function defaults() {
     chat: [],
     favorites: [],
     custom: [],
-    shopping: { checked: {} },
+    shopping: { checked: {}, recipes: [], extra: [] }, // recipes: [{ rid, n }] you added; extra: your own items
     wordOffset: 0,
     health: { days: {}, lastSync: null }, // Apple Watch numbers per day, from the Shortcut (js/health.js)
     myMeals: [], // your own food: { id, name, kcal, fodmap, when: [kinds], note, used, last } (js/mymeals.js)

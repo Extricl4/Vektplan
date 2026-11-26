@@ -5,26 +5,34 @@ import { S, mutate } from './store.js';
 import { tr, L, n0, getLang } from './i18n.js';
 import { FOODS } from './data/foods.js';
 import { AMOUNTS, UNIT_NAMES, LIQUID, LOW_MAX, LADDER } from './data/amounts.js';
+import { FOOD_MACROS, RECIPE_MACROS } from './data/macros.js';
 import { openSheet, closeSheet, icon, fodmapBadge } from './ui.js';
 import { esc, uid } from './util.js';
 
 export const allFoods = () => [...(S().custom || []), ...FOODS];
 export const foodById = (id) => allFoods().find((f) => f.id === id) || null;
 
+// Macros [protein, fat, carbs] scaled by a factor, or null when unknown.
+const scaleM = (m, x) => (m ? m.map((v) => v * x) : null);
+// Your own foods can carry protein/fat/carbs for the same amount as their kcal.
+const ownM = (f) => (f.mp != null || f.mf != null || f.mc != null ? [Number(f.mp) || 0, Number(f.mf) || 0, Number(f.mc) || 0] : null);
+
 export function unitsForFood(f) {
   if (f.custom) {
-    if (f.unit === 'g100') return [{ u: 'g', g: 1, k: (f.kcal || 0) / 100 }];
-    if (f.unit) return [{ u: f.unit, g: null, k: f.kcal || 0 }];
-    return [{ u: 'portion', g: null, k: f.kcal || 0 }]; // older own foods
+    if (f.unit === 'g100') return [{ u: 'g', g: 1, k: (f.kcal || 0) / 100, m: scaleM(ownM(f), 1 / 100) }];
+    if (f.unit) return [{ u: f.unit, g: null, k: f.kcal || 0, m: ownM(f) }];
+    return [{ u: 'portion', g: null, k: f.kcal || 0, m: ownM(f) }]; // older own foods
   }
   const spec = AMOUNTS[f.id];
-  if (!spec) return [{ u: 'portion', g: null, k: f.kcal }];
+  const fm = FOOD_MACROS[f.id] || null;
+  if (!spec) return [{ u: 'portion', g: null, k: f.kcal, m: fm }];
   const kpg = f.kcal / spec[0];
+  const mpg = scaleM(fm, 1 / spec[0]);
   const units = spec.slice(1).map((s) => {
     const [u, g] = s.split(':');
-    return { u, g: Number(g), k: kpg * Number(g) };
+    return { u, g: Number(g), k: kpg * Number(g), m: scaleM(mpg, Number(g)) };
   });
-  units.push({ u: LIQUID.has(f.id) ? 'ml' : 'g', g: 1, k: kpg });
+  units.push({ u: LIQUID.has(f.id) ? 'ml' : 'g', g: 1, k: kpg, m: mpg });
   return units;
 }
 
@@ -55,15 +63,17 @@ export function foodItem(f, amount, unit) {
 }
 
 export function recipeItem(r, amount = 1) {
-  return { k: uid(), src: 'recipe', rid: r.id, name: L(r.name), units: [{ u: 'portion', g: null, k: r.kcal }], amount, unit: 'portion', fodmap: 'low', why: '', tags: [] };
+  return { k: uid(), src: 'recipe', rid: r.id, name: L(r.name), units: [{ u: 'portion', g: null, k: r.kcal, m: RECIPE_MACROS[r.id] || null }], amount, unit: 'portion', fodmap: 'low', why: '', tags: r.tags?.includes('protein') ? ['protein'] : [] };
 }
 
 export function mealItem(m, amount = 1) {
-  return { k: uid(), src: 'my', myId: m.id, name: m.name, units: [{ u: 'portion', g: null, k: mealKcal(m) }], amount, unit: 'portion', fodmap: m.fodmap || 'low', why: '', tags: [...new Set((m.items || []).flatMap((i) => i.tags || []))] };
+  return { k: uid(), src: 'my', myId: m.id, name: m.name, units: [{ u: 'portion', g: null, k: mealKcal(m), m: mealMacros(m) }], amount, unit: 'portion', fodmap: m.fodmap || 'low', why: '', tags: [...new Set((m.items || []).flatMap((i) => i.tags || []))] };
 }
 
+// extra.m = [protein, fat, carbs] for the whole thing, if known.
 export function freeItem(name, kcal, extra = {}) {
-  return { k: uid(), src: 'free', name, units: [{ u: 'portion', g: null, k: kcal || 0 }], amount: 1, unit: 'portion', fodmap: 'low', why: '', tags: [], ...extra };
+  const { m = null, ...rest } = extra;
+  return { k: uid(), src: 'free', name, units: [{ u: 'portion', g: null, k: kcal || 0, m }], amount: 1, unit: 'portion', fodmap: 'low', why: '', tags: [], ...rest };
 }
 
 // Items saved inside a meal are plain objects; old ones were { name, kcal, qty, fodmap }.
@@ -71,27 +81,45 @@ export function restoreItem(it) {
   if (it.units && it.unit) return { ...it, k: uid() };
   if (it.fid && foodById(it.fid)) return foodItem(foodById(it.fid), it.amount, it.unit);
   const kcal = it.qty ? (it.kcal || 0) / it.qty : it.kcal || 0;
-  return freeItem(it.name, kcal, { amount: it.qty || 1, fodmap: it.fodmap || 'low', tags: it.tags || [] });
+  const m = it.p != null ? [it.p || 0, it.f || 0, it.c || 0].map((v) => (it.qty ? v / it.qty : v)) : null;
+  return freeItem(it.name, kcal, { m, amount: it.qty || 1, fodmap: it.fodmap || 'low', tags: it.tags || [] });
 }
 
 // Compact form for saving. Foods from the list are rebuilt from their id, so only the amount is kept.
 export function packItem(it) {
   const { k, ...rest } = it;
   const kcal = Math.round(itemKcal(it));
+  const m = itemMacros(it);
+  const mac = m ? { p: r1(m[0]), f: r1(m[1]), c: r1(m[2]) } : {};
   if (it.src === 'food' && it.fid && foodById(it.fid)) {
-    return { src: 'food', fid: it.fid, name: it.name, amount: it.amount, unit: it.unit, kcal, fodmap: itemFodmap(it), tags: it.tags || [] };
+    return { src: 'food', fid: it.fid, name: it.name, amount: it.amount, unit: it.unit, kcal, ...mac, fodmap: itemFodmap(it), tags: it.tags || [] };
   }
-  return { ...rest, kcal, fodmap: itemFodmap(it) };
+  return { ...rest, kcal, ...mac, fodmap: itemFodmap(it) };
 }
 
 export const unitOf = (it) => it.units.find((x) => x.u === it.unit) || it.units[0];
 export const itemKcal = (it) => (unitOf(it)?.k || 0) * (it.amount || 0);
+export const itemMacros = (it) => scaleM(unitOf(it)?.m || null, it.amount || 0);
+export const r1 = (v) => Math.round(v * 10) / 10;
 export const itemGrams = (it) => (unitOf(it)?.g ? unitOf(it).g * it.amount : null);
 
 export function itemFodmap(it) {
   const g = itemGrams(it);
   if (it.lowMax && g != null && g > it.lowMax && (it.fodmap === 'low' || it.fodmap === 'check')) return 'moderate';
   return it.fodmap || 'low';
+}
+
+// A saved item's macros: from its units, or the p/f/c it was saved with.
+export function savedMacros(i) {
+  if (i.units) return itemMacros(i);
+  if (i.fid && i.p == null && foodById(i.fid)) return itemMacros(restoreItem(i));
+  return i.p != null ? [i.p || 0, i.f || 0, i.c || 0] : null;
+}
+// Total macros of an own meal (null when none of its parts are known).
+export function mealMacros(m) {
+  const parts = (m.items || []).map(savedMacros).filter(Boolean);
+  if (!parts.length) return m.mac || null;
+  return parts.reduce((a, x) => a.map((v, j) => v + x[j]), [0, 0, 0]);
 }
 
 export function mealKcal(m) {
@@ -153,7 +181,7 @@ export function amountSheet({ item, title, add, onDone, onRemove, extraHTML = ''
       ${it.units.length > 1 ? `<div class="chips">${it.units.map((x) => `<button class="chip solid" aria-pressed="${x.u === it.unit}" data-act="unit" data-u="${x.u}">${esc(unitName(x.u, 2))}</button>`).join('')}</div>` : ''}
       <div class="amt">
         <button class="amt-btn" data-act="step" data-d="-1" aria-label="${tr('Less', 'Mindre')}">−</button>
-        <div class="amt-v"><span class="num">${esc(amountText(it.amount, it.unit))}</span>${calm ? '' : `<span class="small muted num">≈ ${n0(kcal)} kcal</span>`}</div>
+        <div class="amt-v"><span class="num">${esc(amountText(it.amount, it.unit))}</span>${calm ? '' : `<span class="small muted num">≈ ${n0(kcal)} kcal</span>`}${!calm && itemMacros(it) ? `<span class="tiny muted num">${esc(macroLine(itemMacros(it)))}</span>` : ''}</div>
         <button class="amt-btn" data-act="step" data-d="1" aria-label="${tr('More', 'Mer')}">+</button>
       </div>
       <div class="chips" style="justify-content:center">${quickFor(it.unit).map((v) => `<button class="chip" aria-pressed="${v === it.amount}" data-act="set" data-v="${v}">${esc(isMass(it.unit) ? `${v} ${it.unit}` : numText(v))}</button>`).join('')}</div>
@@ -188,17 +216,26 @@ export function amountSheet({ item, title, add, onDone, onRemove, extraHTML = ''
 const PER = [['piece', () => tr('1 piece', '1 stk')], ['slice', () => tr('1 slice', '1 skive')], ['portion', () => tr('1 portion', '1 porsjon')], ['g100', () => '100 g']];
 
 export function newFoodSheet(prefill = '', onCreated) {
-  const d = { name: prefill, kcal: '', unit: 'portion', f: 'low' };
+  const d = { name: prefill, kcal: '', unit: 'portion', f: 'low', mp: '', mf: '', mc: '' };
   const draw = () => `<div class="field"><label for="nf-name">${tr('What is it?', 'Hva er det?')}</label>
       <input id="nf-name" class="input" type="text" autocomplete="off" maxlength="60" value="${esc(d.name)}" placeholder="${tr('For example: Mum\'s meatballs', 'For eksempel: Mammas kjøttkaker')}"></div>
     <div class="field"><span class="label">${tr('Calories are for', 'Kaloriene gjelder for')}</span>
       <div class="chips">${PER.map(([k, l]) => `<button class="chip solid" aria-pressed="${d.unit === k}" data-act="per" data-k="${k}">${l()}</button>`).join('')}</div></div>
     <div class="field"><label for="nf-kcal">${tr('About how many kcal? (a guess is fine, or leave empty)', 'Omtrent hvor mange kcal? (et anslag holder, eller la stå tomt)')}</label>
       <input id="nf-kcal" class="input" type="number" inputmode="numeric" min="0" max="3000" value="${esc(d.kcal)}"></div>
+    <div class="field"><span class="label">${tr('Protein, fat and carbs in grams (optional, from the label)', 'Protein, fett og karbohydrater i gram (valgfritt, fra pakken)')}</span>
+      <div class="grid3"><input id="nf-p" class="input" type="text" inputmode="decimal" placeholder="${tr('Protein', 'Protein')}" value="${esc(d.mp)}" aria-label="${tr('Protein (g)', 'Protein (g)')}">
+        <input id="nf-f" class="input" type="text" inputmode="decimal" placeholder="${tr('Fat', 'Fett')}" value="${esc(d.mf)}" aria-label="${tr('Fat (g)', 'Fett (g)')}">
+        <input id="nf-c" class="input" type="text" inputmode="decimal" placeholder="${tr('Carbs', 'Karbo')}" value="${esc(d.mc)}" aria-label="${tr('Carbs (g)', 'Karbohydrater (g)')}"></div></div>
     <div class="field"><span class="label">${tr('How does your stomach like it?', 'Hvordan liker magen det?')}</span>
       <div class="chips">${[['low', tr('Fine', 'Går fint')], ['check', tr('Not sure', 'Usikker')], ['high', tr('Often trouble', 'Ofte trøbbel')]].map(([k, l]) => `<button class="chip solid" aria-pressed="${d.f === k}" data-act="fod" data-k="${k}">${l}</button>`).join('')}</div></div>
     <button class="btn primary" data-act="ok">${tr('Continue', 'Fortsett')}</button>`;
-  const keep = (sheet) => { d.name = sheet.querySelector('#nf-name').value; d.kcal = sheet.querySelector('#nf-kcal').value; };
+  const keep = (sheet) => {
+    d.name = sheet.querySelector('#nf-name').value;
+    d.kcal = sheet.querySelector('#nf-kcal').value;
+    d.mp = sheet.querySelector('#nf-p').value; d.mf = sheet.querySelector('#nf-f').value; d.mc = sheet.querySelector('#nf-c').value;
+  };
+  const num = (v) => { const x = parseFloat(String(v).replace(',', '.')); return x >= 0 && x < 1000 ? x : null; };
   const redraw = (sheet) => { keep(sheet); sheet.querySelector('.col').innerHTML = draw(); };
   openSheet({
     title: tr('Add something new', 'Legg til noe nytt'),
@@ -211,6 +248,9 @@ export function newFoodSheet(prefill = '', onCreated) {
         const name = d.name.trim();
         if (!name) return;
         const food = { id: 'c-' + uid(), n: { en: name, nb: name }, p: { en: '', nb: '' }, kcal: Math.max(0, Math.round(Number(d.kcal) || 0)), unit: d.unit, f: d.f, tags: [], custom: true };
+        const [mp, mf, mc] = [num(d.mp), num(d.mf), num(d.mc)];
+        if (mp != null || mf != null || mc != null) Object.assign(food, { mp: mp ?? 0, mf: mf ?? 0, mc: mc ?? 0 });
+        if ((mp || 0) >= 10) food.tags = ['protein'];
         mutate((s) => { s.custom.unshift(food); s.custom = s.custom.slice(0, 300); });
         closeSheet(true);
         onCreated?.(food);
@@ -249,4 +289,13 @@ export function searchFoods(q, max = 12) {
     if (score) scored.push([score - f.n.en.length / 100, f]);
   }
   return scored.sort((a, b) => b[0] - a[0]).slice(0, max).map(([, f]) => f);
+}
+
+// "12 g protein · 8 g fat · 30 g carbs"
+export function macroLine(m, short = false) {
+  if (!m) return '';
+  const g = (v) => `${v >= 10 ? Math.round(v) : r1(v).toLocaleString(getLang() === 'nb' ? 'nb-NO' : 'en-GB')} g`;
+  return short
+    ? `${g(m[0])} ${tr('protein', 'protein')}`
+    : `${g(m[0])} ${tr('protein', 'protein')} · ${g(m[1])} ${tr('fat', 'fett')} · ${g(m[2])} ${tr('carbs', 'karbo')}`;
 }

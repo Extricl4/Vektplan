@@ -1,13 +1,15 @@
 import { S, mutate } from '../store.js';
-import { dayStatus, planFor, itemInfo, planSource, bestSlotFor } from '../planner.js';
+import { bestSlotFor } from '../planner.js';
 import { RECIPES, POOLS, GENTLE, recipeById } from '../data/recipes.js';
 import { tr, L, n0, kindName, dayShort, shortDate, unitName } from '../i18n.js';
-import { icon, plate, tabbar, toast, openSheet, closeSheet } from '../ui.js';
+import { icon, plate, tabbar, toast, openSheet, closeSheet, confirmSheet } from '../ui.js';
 import { swapSheet, portionButtons, cheer } from '../meals.js';
 import { myMeals, sortedMeals, myMealSheet, logMyMeal, kcalLine, WHEN, STOMACH } from '../mymeals.js';
 import { buildShopping } from '../data/shopping.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey, norm } from '../util.js';
 import { nav } from '../nav.js';
+import { totalsCard, timeline, ideasCard, diaryActions } from './diary.js';
+import { dayTotals } from '../nutrition.js';
 
 let cat = 'all';
 let quick = false;
@@ -33,62 +35,27 @@ export function fmtQty(q, unit) {
   return u ? `${num} ${u}` : num;
 }
 
-function weekStrip(selected) {
-  const start = startOfWeek(selected);
+// One day in the diary, with arrows to go back in time.
+function diaryTab(key) {
   const today = dayKey();
-  return `<div class="row between" style="margin-bottom:-4px">
-      <a class="icon-btn surface" href="#/food/plan/${addDays(start, -7)}" aria-label="${tr('Previous week', 'Forrige uke')}">${icon('chevL', 20)}</a>
-      <span class="small muted">${shortDate(parseKey(start))} – ${shortDate(parseKey(addDays(start, 6)))}</span>
-      <a class="icon-btn surface" href="#/food/plan/${addDays(start, 7)}" aria-label="${tr('Next week', 'Neste uke')}">${icon('chevR', 20)}</a></div>
-    <div class="week" role="group" aria-label="${tr('Day', 'Dag')}">${Array.from({ length: 7 }, (_, i) => {
-      const k = addDays(start, i);
-      const d = parseKey(k);
-      return `<a class="d ${k === today ? 'today' : ''}" href="#/food/plan/${k}" aria-pressed="${k === selected}">${dayShort(d)}<b>${d.getDate()}</b></a>`;
-    }).join('')}</div>`;
-}
-
-function planTab(selected) {
+  const label = key === today ? tr('Today', 'I dag') : key === addDays(today, -1) ? tr('Yesterday', 'I går') : `${dayShort(parseKey(key))} ${shortDate(parseKey(key))}`;
   const calm = S().prefs.calm;
-  const { list } = dayStatus(selected);
-  const isToday = selected === dayKey();
-  const planned = list.reduce((a, x) => a + (x.info.kcal || 0), 0);
-  const rows = list.map((x) => {
-    const r = x.info.recipe;
-    const state = x.state;
-    const stateCls = state === 'done' ? 'done' : state === 'now' || state === 'soon' ? 'now' : state === 'skip' ? 'skip' : '';
-    const sub = `${kindName(x.slot.kind)}${state === 'done' ? ` · ${tr('eaten', 'spist')}` : state === 'skip' ? ` · ${tr('skipped', 'hoppet over')}` : (state === 'now' || state === 'soon') && isToday ? ` · ${tr('now', 'nå')}` : ''}`;
-    return `<div class="item ${stateCls === 'now' ? 'now' : ''} ${state === 'done' ? 'done' : ''}">
-      <span class="time">${x.time}</span>
-      <span class="state ${stateCls}">${state === 'done' ? icon('check', 13, 'stroke-width="3.2"') : ''}</span>
-      <a class="grow" href="${r ? `#/recipe/${r.id}/${selected}/${x.slot.id}` : x.info.mine ? '#/food/mine' : '#/food'}" style="color:inherit;text-decoration:none;min-width:0">
-        <span class="s" style="display:block">${sub}${x.info.mine ? ` · ${tr('my meal', 'mitt måltid')}` : ''}</span><span class="t" style="display:block;${x.info.free && state !== 'done' ? 'color:var(--muted);font-weight:500' : ''}">${esc(state === 'done' && x.logs[0] ? x.logs.map((l) => l.title).join(', ') : x.info.title)}</span></a>
-      ${state !== 'done' ? `<button class="icon-btn" style="width:38px;height:38px;background:transparent;color:var(--muted)" data-act="swap" data-slot="${x.slot.id}" aria-label="${tr('Swap', 'Bytt')} ${esc(x.info.title)}">${icon('swap', 18)}</button>` : ''}
-    </div>`;
-  }).join('');
-  const snacks = [...new Set([...POOLS.snack, ...GENTLE])].map(recipeById).filter(Boolean);
-  return `${sourceRow()}${weekStrip(selected)}
-    <section class="card" style="padding:6px 16px" aria-label="${tr('Meals', 'Måltider')}">
-      <div class="list timeline">${rows || `<p class="small muted" style="padding:14px 0">${tr('No meal times are switched on.', 'Ingen måltider er slått på.')}</p>`}</div>
-    </section>
-    <div class="row between small muted" style="padding:0 4px">
-      <span>${tr('Tap ⇄ to change anything', 'Trykk ⇄ for å endre')}</span>${calm ? '' : `<span class="num">≈ ${n0(planned)} kcal ${tr('planned', 'planlagt')}</span>`}</div>
-    <div class="section-title"><h2 class="h2">${tr('Snack ideas', 'Mellommåltider')}</h2><a class="link-btn" href="#/food/recipes">${tr('All recipes', 'Alle oppskrifter')}</a></div>
-    <div class="hscroll">${snacks.map((r) => recipeCard(r)).join('')}</div>`;
-}
-
-const SOURCES = [
-  ['mix', () => tr('A mix of my meals and recipes', 'En miks av mine måltider og oppskrifter'), () => tr('Your own food on some meals, Vektplan ideas on others.', 'Din egen mat på noen måltider, Vektplan-forslag på andre.')],
-  ['mine', () => tr('Only my meals', 'Bare mine måltider'), () => tr('Ideas come from the meals you saved. Empty spots are your choice.', 'Forslagene kommer fra måltidene du har lagret. Tomme plasser velger du selv.')],
-  ['recipes', () => tr('Vektplan recipes', 'Vektplan-oppskrifter'), () => tr('Low-FODMAP recipes picked for each meal.', 'Lav-FODMAP-oppskrifter valgt til hvert måltid.')],
-  ['free', () => tr('Just meal times, I choose', 'Bare måltidstider, jeg velger'), () => tr('No ideas. The plan only keeps the rhythm.', 'Ingen forslag. Planen holder bare rytmen.')],
-];
-
-function sourceRow() {
-  const src = planSource();
-  const label = SOURCES.find(([k]) => k === src)?.[1]() || '';
-  return `<button class="item card tight" data-act="source" style="flex-direction:row;align-items:center;gap:10px;text-align:left">
-    <span class="plate-mini" style="width:36px;height:36px" aria-hidden="true">${icon('sparkle', 16)}</span>
-    <span class="grow"><span class="tiny muted" style="display:block">${tr('Meal ideas from', 'Måltidsforslag fra')}</span><span style="font-weight:600">${esc(label)}</span></span>${icon('chevD', 16)}</button>`;
+  const week = Array.from({ length: 7 }, (_, i) => addDays(today, -i));
+  return `<div class="daynav"><a class="icon-btn surface" href="#/food/diary/${addDays(key, -1)}" aria-label="${tr('Previous day', 'Forrige dag')}">${icon('chevL', 20)}</a>
+      <span class="grow">${esc(label)}</span>
+      ${key < today ? `<a class="icon-btn surface" href="#/food/diary/${addDays(key, 1)}" aria-label="${tr('Next day', 'Neste dag')}">${icon('chevR', 20)}</a>` : '<span style="width:44px"></span>'}</div>
+    ${totalsCard(key, { link: false })}
+    <a class="btn primary" href="#/log${key === today ? '' : `/${key}`}" style="min-height:54px">${icon('plus', 18)} ${key === today ? tr('Log what you ate', 'Logg det du spiste') : tr(`Add food to ${label.toLowerCase()}`, `Legg til mat for ${label.toLowerCase()}`)}</a>
+    ${timeline(key)}
+    ${key === today ? ideasCard(key) : ''}
+    <section class="card tight" aria-label="${tr('Last 7 days', 'Siste 7 dager')}">
+      <div class="row between"><h2 class="h3">${tr('Last 7 days', 'Siste 7 dager')}</h2><a class="link-btn small" href="#/progress">${tr('Trends', 'Utvikling')} →</a></div>
+      <div class="list">${week.map((k) => {
+        const t = dayTotals(k);
+        return `<a class="item" href="#/food/diary/${k}" style="text-decoration:none;color:inherit;${k === key ? 'font-weight:600' : ''}">
+          <span style="width:84px;flex:none" class="small">${k === today ? tr('Today', 'I dag') : `${dayShort(parseKey(k))} ${parseKey(k).getDate()}.`}</span>
+          <span class="grow small soft num">${t.n ? (calm ? `${t.n} ${tr('times', 'ganger')}` : `${n0(t.kcal)} kcal · ${Math.round(t.p)} g ${tr('protein', 'protein')}`) : '–'}</span>${icon('chevR', 16)}</a>`;
+      }).join('')}</div></section>`;
 }
 
 function mineTab() {
@@ -147,46 +114,46 @@ function recipesTab() {
     <p class="tiny muted center" style="line-height:1.5">${tr('All recipes are built to be low FODMAP following Monash University guidance. Portions matter: stick to the amounts shown.', 'Alle oppskriftene er laget for å være lav-FODMAP etter Monash University sine råd. Mengder betyr noe: hold deg til mengdene som står.')}</p>`;
 }
 
+// The shopping list is built from recipes you add (Recipes → "Add to shopping list") plus your own items.
+export const shopRecipes = () => (Array.isArray(S().shopping.recipes) ? S().shopping.recipes : []);
 function shopItems() {
-  const today = dayKey();
-  const end = shopRange === 'week' ? addDays(startOfWeek(today), 6) : addDays(today, 6);
   const raw = [];
-  for (let k = today; k <= end; k = addDays(k, 1)) {
-    const { list } = dayStatus(k);
-    for (const x of list) {
-      if (x.done || x.skipped || (k === today && x.state === 'missed')) continue;
-      const r = x.info.recipe;
-      if (!r) continue;
-      for (const [q, unit, name] of r.ing) raw.push({ q: q == null ? null : q / r.serves, unit, name });
-    }
+  for (const x of shopRecipes()) {
+    const r = recipeById(x.rid);
+    if (!r) continue;
+    for (const [q, unit, name] of r.ing) raw.push({ q: q == null ? null : (q / r.serves) * (x.n || r.serves), unit, name });
   }
   const { list, pantry } = buildShopping(raw);
   list.sort((a, b) => L(a.name).localeCompare(L(b.name), S().prefs.lang === 'nb' ? 'nb' : 'en'));
-  return { items: list, pantry, end };
+  return { items: list, pantry };
 }
 
 function shopTab() {
-  const { items, pantry, end } = shopItems();
+  const { items, pantry } = shopItems();
   const checked = S().shopping.checked || {};
-  const label = shopRange === 'week' ? tr('Rest of this week', 'Resten av uka') : tr('Next 7 days', 'Neste 7 dager');
-  const left = items.filter((it) => !checked[it.key]).length;
+  const extra = Array.isArray(S().shopping.extra) ? S().shopping.extra : [];
+  const left = items.filter((it) => !checked[it.key]).length + extra.filter((x) => !checked[x.key]).length;
+  const row = (key, name, qty) => {
+    const on = !!checked[key];
+    return `<button class="item" data-act="tick" data-id="${esc(key)}" aria-pressed="${on}">
+      <span class="state ${on ? 'done' : ''}" style="border-radius:7px">${on ? icon('check', 13, 'stroke-width="3.2"') : ''}</span>
+      <span class="grow" style="${on ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(name)}</span>
+      <span class="small muted num">${esc(qty || '')}</span></button>`;
+  };
   return `<header class="head"><a class="icon-btn surface" href="#/food" aria-label="${tr('Back', 'Tilbake')}">${icon('chevL', 20)}</a>
-      <div class="grow"><h1 class="h2">${tr('Shopping list', 'Handleliste')}</h1><p class="small muted">${label} · ${tr('until', 'til')} ${shortDate(parseKey(end))}</p></div>
-      ${items.length ? `<span class="badge accent">${left} ${tr('left', 'igjen')}</span>` : ''}</header>
-    <div class="seg"><button aria-pressed="${shopRange === 'week'}" data-act="range" data-r="week">${tr('This week', 'Denne uka')}</button><button aria-pressed="${shopRange === '7'}" data-act="range" data-r="7">${tr('Next 7 days', 'Neste 7 dager')}</button></div>
+      <div class="grow"><h1 class="h2">${tr('Shopping list', 'Handleliste')}</h1></div>
+      ${items.length + extra.length ? `<span class="badge accent">${left} ${tr('left', 'igjen')}</span>` : ''}</header>
+    ${shopRecipes().length ? `<div class="chips">${shopRecipes().map((x) => recipeById(x.rid) ? `<button class="chip solid" aria-pressed="true" data-act="unshop" data-id="${x.rid}">${esc(L(recipeById(x.rid).name))} ${icon('x', 13)}</button>` : '').join('')}</div>` : ''}
+    <div class="row" style="gap:8px"><input id="shop-add" class="input" type="text" maxlength="60" autocomplete="off" placeholder="${tr('Add something, e.g. bananas', 'Legg til noe, f.eks. bananer')}">
+      <button class="btn secondary" data-act="shopAdd" style="flex:none">${icon('plus', 18)}</button></div>
     <section class="card" style="padding:4px 16px">
-      ${items.length ? `<div class="list">${items.map((it) => {
-        const on = !!checked[it.key];
-        return `<button class="item" data-act="tick" data-id="${esc(it.key)}" aria-pressed="${on}">
-          <span class="state ${on ? 'done' : ''}" style="border-radius:7px">${on ? icon('check', 13, 'stroke-width="3.2"') : ''}</span>
-          <span class="grow" style="${on ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(L(it.name))}</span>
-          <span class="small muted num">${it.q != null ? esc(fmtQty(it.q, it.unit)) : ''}</span></button>`;
-      }).join('')}</div>` : `<div class="empty-state">${icon('cart', 32)}<p>${tr('Nothing left to buy for this period.', 'Ingenting igjen å kjøpe for denne perioden.')}</p></div>`}
+      ${items.length || extra.length ? `<div class="list">${extra.map((x) => row(x.key, x.text, '')).join('')}${items.map((it) => row(it.key, L(it.name), it.q != null ? fmtQty(it.q, it.unit) : '')).join('')}</div>`
+        : `<div class="empty-state">${icon('cart', 32)}<p>${tr('Empty for now. Open a recipe and tap "Add to shopping list", or add things yourself above.', 'Tom foreløpig. Åpne en oppskrift og trykk «Legg i handlelisten», eller legg til ting selv over.')}</p></div>`}
     </section>
     ${pantry.length ? `<section class="card tight"><h2 class="h3">${tr('Check the cupboard', 'Sjekk skapet')}</h2>
       <p class="small soft" style="line-height:1.5">${esc(pantry.map((n) => L(n)).join(', '))}</p></section>` : ''}
-    <div class="btns"><button class="btn secondary" data-act="clearTicks">${tr('Clear ticks', 'Fjern haker')}</button><a class="btn outline" href="#/food">${tr('Back to plan', 'Til planen')}</a></div>
-    <p class="tiny muted center" style="line-height:1.5">${tr('Based on the meals left in your plan, rounded up to what you buy. Choose lactose-free dairy and check labels for onion and garlic.', 'Basert på måltidene som er igjen i planen, rundet opp til det du kjøper. Velg laktosefrie meieriprodukter og sjekk etiketter for løk og hvitløk.')}</p>`;
+    <div class="btns"><button class="btn secondary" data-act="clearTicks">${tr('Clear ticks', 'Fjern haker')}</button><button class="btn outline" data-act="clearShop">${tr('Empty the list', 'Tøm listen')}</button></div>
+    <p class="tiny muted center" style="line-height:1.5">${tr('Rounded up to what you buy. Choose lactose-free dairy and check labels for onion and garlic.', 'Rundet opp til det du kjøper. Velg laktosefrie meieriprodukter og sjekk etiketter for løk og hvitløk.')}</p>`;
 }
 
 export function render(ctx) {
@@ -194,46 +161,22 @@ export function render(ctx) {
   if (tab === 'shop') return `<div class="screen">${shopTab()}</div>${tabbar('food')}`;
   const isRecipes = tab === 'recipes';
   const isMine = tab === 'mine';
-  const selected = tab === 'plan' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '') ? arg : dayKey();
+  const key = tab === 'diary' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '') && arg <= dayKey() ? arg : dayKey();
   return `<div class="screen">
     <div class="blob b1"></div>
     <header class="head"><h1 class="h1">${tr('Food', 'Mat')}</h1>
       <a class="btn small secondary" href="#/food/shop">${icon('cart', 17)} ${tr('Shopping list', 'Handleliste')}</a></header>
     <div class="seg" role="tablist">
-      <a role="tab" href="#/food" aria-selected="${!isRecipes && !isMine}">${tr('Plan', 'Plan')}</a>
+      <a role="tab" href="#/food" aria-selected="${!isRecipes && !isMine}">${tr('Diary', 'Dagbok')}</a>
       <a role="tab" href="#/food/mine" aria-selected="${isMine}">${tr('My meals', 'Mine måltider')}</a>
       <a role="tab" href="#/food/recipes" aria-selected="${isRecipes}">${tr('Recipes', 'Oppskrifter')}</a></div>
-    ${isRecipes ? recipesTab() : isMine ? mineTab() : planTab(selected)}
+    ${isRecipes ? recipesTab() : isMine ? mineTab() : diaryTab(key)}
   </div>${tabbar('food')}`;
 }
 
 export const actions = {
-  swap: (el, e, ctx) => {
-    const [tab, arg] = ctx.params;
-    const key = tab === 'plan' && arg ? arg : dayKey();
-    const slot = S().slots.find((s) => s.id === el.dataset.slot);
-    if (slot) swapSheet(key, slot);
-  },
+  ...diaryActions,
   cat: (el) => { cat = el.dataset.cat; nav.rerender(); },
-  source: () => {
-    const cur = S().prefs.planSource || 'auto';
-    const eff = planSource();
-    openSheet({
-      title: tr('Meal ideas from', 'Måltidsforslag fra'),
-      html: `<div class="col">${SOURCES.map(([k, name, sub]) => `<button class="choice" aria-pressed="${(cur === 'auto' ? eff : cur) === k}" data-act="pick" data-v="${k}" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <span>${esc(name())}</span><span class="small soft" style="font-weight:400">${esc(sub())}</span></button>`).join('')}</div>
-        <p class="tiny muted">${tr('Meals you changed yourself stay as they are.', 'Måltider du har endret selv blir som de er.')}</p>`,
-      actions: {
-        pick: (b) => {
-          const v = b.dataset.v;
-          mutate((s) => { s.prefs.planSource = v; });
-          closeSheet();
-          if ((v === 'mine' || v === 'mix') && !myMeals().length) toast(tr('Save a few meals under My meals, and they show up in the plan.', 'Lagre noen måltider under Mine måltider, så dukker de opp i planen.'), 3600);
-          nav.rerender();
-        },
-      },
-    });
-  },
   newMy: () => myMealSheet(null),
   editMy: (el) => {
     const m = myMeals().find((x) => x.id === el.dataset.id);
@@ -260,7 +203,6 @@ export const actions = {
     const q = norm(el.value.trim());
     document.querySelectorAll('#rgrid > [data-name]').forEach((c) => c.classList.toggle('hidden', !!q && !c.dataset.name.includes(q)));
   },
-  range: (el) => { shopRange = el.dataset.r; nav.rerender(); },
   tick: (el) => {
     const id = el.dataset.id;
     mutate((s) => {
@@ -271,4 +213,18 @@ export const actions = {
     nav.rerender();
   },
   clearTicks: () => { mutate((s) => { s.shopping.checked = {}; }); toast(tr('Cleared.', 'Fjernet.')); nav.rerender(); },
+  unshop: (el) => { mutate((s) => { s.shopping.recipes = shopRecipes().filter((x) => x.rid !== el.dataset.id); }); nav.rerender(); },
+  shopAdd: () => {
+    const v = document.getElementById('shop-add')?.value.trim();
+    if (!v) return;
+    mutate((s) => { s.shopping.extra = [...(Array.isArray(s.shopping.extra) ? s.shopping.extra : []), { key: 'x-' + Date.now(), text: v.slice(0, 60) }]; });
+    nav.rerender();
+    setTimeout(() => document.getElementById('shop-add')?.focus(), 50);
+  },
+  clearShop: async () => {
+    const ok = await confirmSheet({ title: tr('Empty the list?', 'Tømme listen?'), text: tr('Removes the recipes and your own items from the list.', 'Fjerner oppskriftene og dine egne ting fra listen.'), yes: tr('Empty it', 'Tøm') });
+    if (!ok) return;
+    mutate((s) => { s.shopping = { checked: {}, recipes: [], extra: [] }; });
+    nav.rerender();
+  },
 };

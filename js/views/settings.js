@@ -61,8 +61,9 @@ export function render() {
     <div class="set-group">
       ${row(`<label for="s-name">${tr('Name', 'Navn')}</label>`, '', `<input id="s-name" class="input" style="width:150px;min-height:40px;padding:8px 12px;text-align:right" value="${esc(p.name)}" data-change="name" autocomplete="given-name">`)}
       ${row(`<label for="s-height">${tr('Height', 'Høyde')}</label>`, '', `<div class="row" style="gap:6px"><input id="s-height" class="input" style="width:90px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" value="${p.heightCm ?? ''}" data-change="height"><span class="muted small">cm</span></div>`)}
-      ${row(`<label for="s-goal">${tr('Daily calorie goal', 'Daglig kalorimål')}</label>`, tr('Optional. Leave empty to track meals instead. Best set together with your doctor or a dietitian.', 'Valgfritt. La det stå tomt for å følge måltider i stedet. Best å sette sammen med legen eller en ernæringsfysiolog.'), `<div class="row" style="gap:6px"><input id="s-goal" class="input" style="width:96px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" placeholder="–" value="${p.goalKcal ?? ''}" data-change="goal"><span class="muted small">kcal</span></div>`)}
-      ${row(tr('Calm mode', 'Rolig modus'), tr('Hides calorie numbers. Shows meals done instead.', 'Skjuler kalorier. Viser måltider i stedet.'), toggle('s-calm', st.prefs.calm, 'calm'))}
+      ${row(`<label for="s-goal">${tr('Daily calorie goal', 'Daglig kalorimål')}</label>`, tr('Optional. Leave empty to just see the numbers. Best set together with your doctor or a dietitian.', 'Valgfritt. La det stå tomt for bare å se tallene. Best å sette sammen med legen eller en ernæringsfysiolog.'), `<div class="row" style="gap:6px"><input id="s-goal" class="input" style="width:96px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" placeholder="–" value="${p.goalKcal ?? ''}" data-change="goal"><span class="muted small">kcal</span></div>`)}
+      ${row(`<label for="s-pgoal">${tr('Daily protein goal', 'Daglig proteinmål')}</label>`, tr('Optional. A common guide for building muscle is about 1.6 g per kg body weight.', 'Valgfritt. En vanlig pekepinn for å bygge muskler er rundt 1,6 g per kg kroppsvekt.'), `<div class="row" style="gap:6px"><input id="s-pgoal" class="input" style="width:96px;min-height:40px;padding:8px 12px;text-align:right" type="number" inputmode="numeric" placeholder="–" value="${p.goalProtein ?? ''}" data-change="pgoal"><span class="muted small">g</span></div>`)}
+      ${row(tr('Calm mode', 'Rolig modus'), tr('Hides calories and grams. Shows how often you ate instead.', 'Skjuler kalorier og gram. Viser hvor ofte du har spist i stedet.'), toggle('s-calm', st.prefs.calm, 'calm'))}
     </div>
 
     <p class="set-label">Apple Watch</p>
@@ -72,7 +73,7 @@ export function render() {
       ${hasHealth() ? `<button class="set-row" data-act="runShortcut" style="color:var(--accent)">${icon('refresh', 18)} <span class="grow">${tr('Get data from the Watch', 'Hent data fra klokka')}</span></button>` : ''}
     </div>
 
-    <p class="set-label">${tr('Meal times', 'Måltider')}</p>
+    <p class="set-label">${tr('Meal reminders (optional)', 'Måltidspåminnelser (valgfritt)')}</p>
     <div class="set-group">
       ${slots.map((s) => row(`<span>${kindName(s.kind)}</span>`, '', `<div class="row" style="gap:10px"><input class="input" style="width:118px;min-height:40px;padding:6px 10px" type="time" value="${s.time}" data-change="slotTime" data-id="${s.id}" aria-label="${kindName(s.kind)}" ${s.on ? '' : 'disabled'}>${toggle('slot-' + s.id, s.on, 'slotOn').replace('data-change="slotOn"', `data-change="slotOn" data-id="${s.id}"`)}</div>`)).join('')}
       <button class="set-row" data-act="resetSlots" style="color:var(--accent)">${icon('refresh', 18)} ${tr('Reset to default times', 'Tilbakestill tidene')}</button>
@@ -165,6 +166,12 @@ export const actions = {
     const v = Math.round(Number(el.value));
     mutate((s) => { s.profile.goalKcal = v >= 800 && v <= 8000 ? v : null; });
     if (el.value && !(v >= 800 && v <= 8000)) toast(tr('Use a number between 800 and 8000, or leave it empty.', 'Bruk et tall mellom 800 og 8000, eller la det stå tomt.'));
+    else toast(tr('Saved.', 'Lagret.'), 1200);
+  },
+  pgoal: (el) => {
+    const v = Math.round(Number(el.value));
+    mutate((s) => { s.profile.goalProtein = v >= 20 && v <= 300 ? v : null; });
+    if (el.value && !(v >= 20 && v <= 300)) toast(tr('Use a number between 20 and 300, or leave it empty.', 'Bruk et tall mellom 20 og 300, eller la det stå tomt.'));
     else toast(tr('Saved.', 'Lagret.'), 1200);
   },
   calm: (el) => { mutate((s) => { s.prefs.calm = el.checked; }); toast(el.checked ? tr('Calm mode on.', 'Rolig modus på.') : tr('Calm mode off.', 'Rolig modus av.'), 1400); },

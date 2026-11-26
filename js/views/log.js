@@ -1,38 +1,50 @@
 // Log food: build what you ate from ingredients with everyday amounts (or grams),
 // pick one of your own meals, or snap a photo / type it. Simple first, details when you want them.
-import { S, peekDay, mutate, addLog, activeSlots } from '../store.js';
+import { S, peekDay, day, mutate, activeSlots } from '../store.js';
+import { logItems } from '../nutrition.js';
 import { bestSlotFor } from '../planner.js';
 import { RECIPES, recipeById } from '../data/recipes.js';
 import { BOOSTS } from '../data/amounts.js';
-import { tr, L, n0, kindName } from '../i18n.js';
+import { tr, L, n0, kindName, shortDate } from '../i18n.js';
 import { icon, openSheet, closeSheet, toast } from '../ui.js';
 import { cheer } from '../meals.js';
 import { hasAI, estimateMeal } from '../ai.js';
-import { esc, dayKey, addDays, norm, readFileAsDataURL, shrinkImage } from '../util.js';
+import { esc, dayKey, addDays, norm, readFileAsDataURL, shrinkImage, parseKey, nowMinutes } from '../util.js';
 import { nav } from '../nav.js';
 import { myMeals, sortedMeals, saveMyMeal, myMealSheet, whenOf } from '../mymeals.js';
 import {
-  allFoods, foodById, foodItem, recipeItem, mealItem, freeItem, restoreItem, packItem, itemKcal, itemFodmap, itemAmountText,
+  allFoods, foodById, foodItem, recipeItem, mealItem, freeItem, restoreItem, packItem, itemKcal, itemFodmap, itemAmountText, itemMacros, macroLine,
   amountSheet, newFoodSheet, searchFoods, mealKcal,
 } from '../amount.js';
 
 let st = null;
-function fresh(slot) {
-  return { slot: slot ?? bestSlotFor(), q: '', cart: [], mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], saveAs: false, saveName: '' };
+function fresh(date) {
+  return { date: date || dayKey(), time: null, q: '', cart: [], mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], saveAs: false, saveName: '' };
 }
 
 export function enter(ctx) {
-  const slot = ctx.params[0];
-  st = fresh(slot && activeSlots().some((s) => s.id === slot) ? slot : undefined);
+  const p = ctx.params[0];
+  st = fresh(/^\d{4}-\d{2}-\d{2}$/.test(p || '') && p <= dayKey() ? p : undefined);
+  // Logging for an earlier day: start at a sensible time instead of "now".
+  if (st.date !== dayKey()) st.time = 12 * 60;
+  if (p === 'photo') st.mode = 'photo';
 }
 
 const RANK = { low: 0, check: 1, moderate: 2, high: 3 };
 const worst = (fs) => fs.reduce((w, f) => (RANK[f] > RANK[w] ? f : w), 'low');
 const COMMON = ['egg', 'spelt-bread', 'cheese', 'butter', 'lf-milk', 'oats', 'rice', 'potatoes', 'chicken-breast', 'salmon', 'banana-firm', 'peanut-butter', 'lf-yogurt', 'rice-cakes'];
 
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+function whenTs() {
+  const d = parseKey(st.date);
+  const m = st.time ?? nowMinutes();
+  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  return Math.min(d.getTime(), Date.now());
+}
 function slotLabel() {
-  const s = activeSlots().find((x) => x.id === st.slot);
-  return s ? `${kindName(s.kind)} · ${s.time}` : tr('Extra', 'Ekstra');
+  const today = st.date === dayKey();
+  const day = today ? '' : st.date === addDays(dayKey(), -1) ? `${tr('Yesterday', 'I går')} · ` : `${shortDate(parseKey(st.date))} · `;
+  return st.time == null && today ? tr('Now', 'Nå') : `${day}${hhmm(st.time ?? nowMinutes())}`;
 }
 
 function recentLogs(max = 6) {
@@ -118,6 +130,11 @@ function typeCard() {
     ${st.error ? `<div class="note amber">${icon('info', 18)}<span>${esc(st.error)}</span></div>` : ''}</section>`;
 }
 
+function cartMac() {
+  const ms = st.cart.map(itemMacros).filter(Boolean);
+  return ms.length ? ms.reduce((a, x) => a.map((v, j) => v + x[j]), [0, 0, 0]) : null;
+}
+
 function cartCard() {
   const calm = S().prefs.calm;
   if (!st.cart.length && !st.unmatched.length) return '';
@@ -127,13 +144,14 @@ function cartCard() {
   return `<section class="card" aria-label="${tr('Your meal', 'Måltidet ditt')}">
     <div class="row between"><h2 class="h3">${st.est?.title ? esc(st.est.title) : tr('Your meal', 'Måltidet ditt')}</h2>
       ${calm ? '' : `<span class="num" style="font-size:20px;font-weight:700">≈ ${n0(total)} kcal</span>`}</div>
+    ${!calm && cartMac() ? `<p class="small soft num" style="margin-top:-6px">${esc(macroLine(cartMac()))}</p>` : ''}
     ${st.est?.question ? `<div class="note amber">${icon('info', 18)}<span>${esc(st.est.question)}</span></div>` : ''}
     ${st.cart.length ? `<div class="list">${st.cart.map((it) => {
       const f = itemFodmap(it);
       return `<button class="item" data-act="editItem" data-k="${it.k}" style="align-items:flex-start">
       <span class="dot ${f}" style="margin-top:7px" aria-hidden="true"></span>
       <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(it.name)}</span>
-        <span class="s">${esc(it.portionText || itemAmountText(it))}${calm ? '' : ` · ${n0(itemKcal(it))} kcal`}</span>
+        <span class="s">${esc(it.portionText || itemAmountText(it))}${calm ? '' : ` · ${n0(itemKcal(it))} kcal${itemMacros(it) ? ` · ${esc(macroLine(itemMacros(it), true))}` : ''}`}</span>
         ${f !== 'low' && it.why ? `<span class="s" style="display:block;color:var(--amber)">${esc(it.why)}</span>` : ''}</span>
       <span class="small" style="color:var(--accent);font-weight:600;white-space:nowrap">${tr('Change', 'Endre')}</span></button>`;
     }).join('')}</div>` : ''}
@@ -261,7 +279,7 @@ async function runEstimate() {
   try {
     const res = await estimateMeal({ image: st.mode === 'photo' ? st.photo : null, text: st.mode === 'type' ? st.text : '' });
     st.est = res;
-    st.cart = res.items.map((x) => freeItem(x.name, x.kcal, { portionText: x.portion, fodmap: x.fodmap || 'low', why: x.reason || '', tags: x.tags || [] }));
+    st.cart = res.items.map((x) => freeItem(x.name, x.kcal, { m: x.m, portionText: x.portion, fodmap: x.fodmap || 'low', why: x.reason || '', tags: x.tags || [] }));
     if (!res.items.length) st.error = tr('I could not see any food. Try another photo or type it instead.', 'Jeg så ingen mat. Prøv et nytt bilde eller skriv det inn.');
   } catch (e) {
     st.error = e.message || String(e);
@@ -270,10 +288,42 @@ async function runEstimate() {
   nav.rerender();
 }
 
+function whenSheet() {
+  const today = dayKey();
+  const yest = addDays(today, -1);
+  const draw = () => `<div class="seg"><button aria-pressed="${st.date === today}" data-act="day" data-v="${today}">${tr('Today', 'I dag')}</button>
+      <button aria-pressed="${st.date === yest}" data-act="day" data-v="${yest}">${tr('Yesterday', 'I går')}</button></div>
+    ${st.date === today ? `<div class="chips">${[[null, tr('Now', 'Nå')], [30, tr('30 min ago', '30 min siden')], [60, tr('1 hour ago', '1 time siden')], [120, tr('2 hours ago', '2 timer siden')]].map(([ago, l]) => `<button class="chip solid" aria-pressed="${ago == null ? st.time == null : false}" data-act="ago" data-v="${ago ?? ''}">${l}</button>`).join('')}</div>` : ''}
+    <div class="field"><label for="w-time">${tr('Time', 'Klokkeslett')}</label><input id="w-time" class="input" type="time" value="${hhmm(st.time ?? nowMinutes())}" data-change="t"></div>
+    <button class="btn primary" data-act="ok">${tr('Done', 'Ferdig')}</button>`;
+  openSheet({
+    title: tr('When did you eat it?', 'Når spiste du det?'),
+    html: draw(),
+    actions: {
+      day: (b, e, sheet) => { st.date = b.dataset.v; if (st.date !== today && st.time == null) st.time = nowMinutes(); sheet.querySelector('.col').innerHTML = draw(); },
+      ago: (b) => {
+        st.time = b.dataset.v ? Math.max(0, nowMinutes() - Number(b.dataset.v)) : null;
+        closeSheet(); nav.rerender();
+      },
+      t: (el) => { const [h, m] = String(el.value || '').split(':').map(Number); if (h >= 0 && m >= 0) st.time = h * 60 + m; },
+      ok: (b, e, sheet) => {
+        const v = sheet.querySelector('#w-time').value;
+        const [h, m] = String(v || '').split(':').map(Number);
+        if (h >= 0 && m >= 0) {
+          const t = h * 60 + m;
+          st.time = st.date === today && Math.abs(t - nowMinutes()) <= 1 ? null : t;
+        }
+        closeSheet(); nav.rerender();
+      },
+    },
+  });
+}
+
 export const actions = {
   close: () => { st = null; nav.back('today'); },
   mode: (el) => { st.mode = el.dataset.mode || null; st.error = ''; nav.rerender(); },
-  slot: () => {
+  slot: () => whenSheet(),
+  oldSlot: () => {
     const slots = activeSlots();
     openSheet({
       title: tr('Which meal is this?', 'Hvilket måltid er dette?'),
@@ -345,7 +395,7 @@ export const actions = {
       askAmount(foodItem(food));
     });
   },
-  newMeal: () => { const items = st.cart.map(packItem); myMealSheet(null, { prefill: { name: '', items, when: st.slot ? [whenOf(activeSlots().find((s) => s.id === st.slot)?.kind)] : null } }); },
+  newMeal: () => { const items = st.cart.map(packItem); myMealSheet(null, { prefill: { name: '', items, when: null } }); },
   saveAs: (el) => {
     st.saveAs = el.checked;
     if (st.saveAs && !st.saveName) st.saveName = st.est?.title || (st.cart.length === 1 ? st.cart[0].name : '');
@@ -383,28 +433,26 @@ export const actions = {
   },
   save: () => {
     if (!st.cart.length) return;
-    const key = dayKey();
-    const items = st.cart.map(packItem);
-    const base = items.reduce((a, i) => a + i.kcal, 0);
-    const title = st.est?.title || (st.saveAs && st.saveName.trim()) || (items.length === 1 ? items[0].name : items.slice(0, 3).map((i) => i.name).join(', ') + (items.length > 3 ? '…' : ''));
-    const tags = [...new Set(items.flatMap((i) => i.tags || []))];
+    const key = st.date;
+    const title = st.est?.title || (st.saveAs && st.saveName.trim()) || '';
     const single = st.cart.length === 1 ? st.cart[0] : null;
-    const fod = worst(items.map((i) => i.fodmap));
-    let myId = single?.myId || null;
-    if (st.saveAs) {
-      const name = st.saveName.trim() || title;
-      const slotKind = activeSlots().find((s) => s.id === st.slot)?.kind;
-      myId = saveMyMeal({ name, items, kcal: base, when: slotKind ? [whenOf(slotKind)] : ['breakfast', 'lunch', 'dinner', 'snack'], fodmap: fod === 'high' ? 'moderate' : fod, note: '' });
+    const log = logItems(key, st.cart, { title, ts: whenTs(), source: st.mode || 'search', myId: single?.myId || null, rid: single?.rid || null });
+    if (st.saveAs && log) {
+      const items = st.cart.map(packItem);
+      const fod = log.fodmap;
+      const name = st.saveName.trim() || log.title;
+      const myId = saveMyMeal({ name, items, kcal: log.baseKcal, when: ['breakfast', 'lunch', 'dinner', 'snack'], fodmap: fod === 'high' ? 'moderate' : fod, note: '' });
+      mutate(() => { const l = day(key).logs.find((x) => x.id === log.id); if (l) l.myId = myId; });
     }
-    addLog(key, { slot: st.slot || null, title, baseKcal: base, portion: 1, items: items.map((i) => ({ name: i.name, kcal: i.kcal, amount: i.amount, unit: i.unit, fodmap: i.fodmap, tags: i.tags || [] })), tags, fodmap: fod, source: st.mode || 'search', rid: single?.rid || null, myId });
     const usedMine = st.cart.filter((c) => c.myId).map((c) => c.myId);
     if (usedMine.length) mutate((s) => { for (const m of s.myMeals) if (usedMine.includes(m.id)) { m.used = (m.used || 0) + 1; m.last = Date.now(); } });
-    const flagged = items.filter((i) => i.fodmap === 'high');
+    const flagged = (log?.items || []).filter((i) => i.fodmap === 'high');
     const saved = st.saveAs;
+    const past = key !== dayKey();
     st = null;
     const names = flagged.map((i) => i.name).join(', ');
     toast(flagged.length ? tr(`Logged. Heads up: ${names} ${flagged.length > 1 ? 'are' : 'is'} high FODMAP.`, `Logget. Obs: ${names} har mye FODMAP.`)
       : saved ? tr('Logged, and saved to My meals.', 'Logget, og lagret i Mine måltider.') : cheer(key), 3200);
-    nav.go('today');
+    nav.go(past ? `food/diary/${key}` : 'today');
   },
 };

@@ -31,9 +31,14 @@ Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
 - Food amounts: `js/data/amounts.js` gives every food everyday units (`slice`, `glass`, `dl`, `piece`…) plus grams;
   `js/amount.js` turns them into items `{ src, fid, name, units, amount, unit }` with `itemKcal`, `itemFodmap`
   (portions above Monash low-FODMAP limits become "moderate"), `amountSheet()` and `packItem()`/`restoreItem()` for saving.
-- Own meals live in `myMeals` (`js/mymeals.js`), now with `items` (ingredients with amounts); old ones only have `kcal`.
-  The editor is the `mymeal/<id|new>` screen. `prefs.planSource` picks where meal ideas come from: auto/mix/mine/recipes/free.
-  Plan items are `{ rid }` (recipe), `{ my }` (own meal), `{ food }` or `{ free: true }`. Today shows ideas, never orders.
+- There is no meal plan in the UI any more (he asked for that): food is a diary. He logs what he ate, how much and when;
+  Today and Food → Diary show calories, protein, fat and carbs, a timeline, and ideas on the side (`js/ideas.js`, never orders).
+  Macros: `js/data/macros.js` ([protein, fat, carbs] per food portion / recipe serving); logs store `mac` for one portion,
+  `portion` scales it; `js/nutrition.js` has `logMac`, `dayTotals`, `logItems` (the one way to save a log). Old logs without
+  macros count as "unknown". `profile.goalProtein` is optional and only set by him (suggestion: 1.6 g/kg).
+  Meal slots and `planner.js` still exist for reminders, streaks and the coach; logs get the nearest slot by time.
+- Own meals live in `myMeals` (`js/mymeals.js`), with `items` (ingredients with amounts); old ones only have `kcal`.
+  The editor is the `mymeal/<id|new>` screen. The shopping list comes from `shopping.recipes` ([{ rid, n }]) and `shopping.extra`.
 - Supplements: `supps.list` (`js/supps.js`), ticks per day in `days[key].supps`. Protein powder also adds a food log with `supp: id`.
 - Trends: `js/history.js` builds one summary per day from what's stored; nothing extra is saved.
 - Training plans are in `training` (`js/training.js`). Ready-made programs (`js/data/programs.js`) store session items with a
@@ -43,6 +48,10 @@ Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
   Sessions: `{ id, name, groups, ex: [{ id, sets, reps, slot?, lo?, hi?, focus? }] }`, `schedule[weekday] = sessionId`,
   `extras[weekday] = 'walk'|'stretch'`. Empty `training.sessions` = the built-in Strength A/B rhythm.
   `workoutDef(id)` gives one shape for own sessions, built-in ones and walks. Workouts save `log[exId] = [{ r, kg }]`.
+- Programs: start2, focus3 (full body + a focus day for his chosen muscles, default biceps + core), full3, ul4.
+  Focus muscles: chest, back, shoulders, biceps, triceps, legs, glutes, core (old "arms" → biceps + triceps via `normFocus`).
+- How-to for exercises: `js/data/howto.js` (what you need, steps split by "|", a tip) and `js/views/howto.js`
+  (`howToSheet`, `needsLine`). Every exercise a program can pick must have an entry. The guide screen is `#/guide`.
 - Default level is "gentle" (he eats very little): 2 sets, max 5 exercises (6 with a focus), 90 s rest, no heavy barbell lifts
   auto-picked, nothing that presses on the stomach (crunches, leg raises) auto-picked.
 

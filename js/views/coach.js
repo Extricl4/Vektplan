@@ -1,5 +1,7 @@
 import { S, mutate, peekDay } from '../store.js';
 import { dayStatus, totals, streak, makeRestGentle, nudgeNext, weekSummary } from '../planner.js';
+import { dayTotals } from '../nutrition.js';
+import { ideasFor } from '../ideas.js';
 import { hasAI, coachReply } from '../ai.js';
 import { GENTLE, POOLS, recipeById } from '../data/recipes.js';
 import { tr, L, n0, n1, kindName } from '../i18n.js';
@@ -16,7 +18,7 @@ const CHIPS = () => [
   ['appetite', tr("I don't feel like eating", 'Jeg har ikke lyst på mat')],
   ['snack', tr('Suggest a snack', 'Foreslå et mellommåltid')],
   ['status', tr('How am I doing?', 'Hvordan går det?')],
-  ['move', tr('Move my next meal', 'Flytt neste måltid')],
+  ['next', tr('What could I eat?', 'Hva kan jeg spise?')],
   ['anxiety', tr('I feel anxious about food', 'Jeg er engstelig for mat')],
 ];
 
@@ -54,17 +56,25 @@ function localReply(intent) {
       return { text: tr('That sounds like something a doctor should look at soon. Please call legevakt on 116 117, or 113 if it feels serious or is getting worse fast.', 'Det høres ut som noe en lege bør se på snart. Ring legevakten på 116 117, eller 113 hvis det føles alvorlig eller blir raskt verre.') };
     case 'nausea':
       return {
-        text: tr("That's rough, I'm sorry. Try something cold and plain in tiny amounts: a few sips of smoothie or a couple of rice crackers. Sit upright, breathe out slowly, and give it 15 minutes. Want me to make the rest of today extra gentle?", 'Så kjipt, det er leit. Prøv noe kaldt og enkelt i små mengder: noen slurker smoothie eller et par riskjeks. Sitt oppreist, pust rolig ut, og gi det 15 minutter. Skal jeg gjøre resten av dagen ekstra mild?'),
-        action: 'gentle',
+        text: tr("That's rough, I'm sorry. Try something cold and plain in tiny amounts: a few sips of smoothie or a couple of rice crackers. Sit upright, breathe out slowly, and give it 15 minutes. Tap \"Rough\" in the stomach check-in on Today and the ideas there switch to the gentlest ones.", 'Så kjipt, det er leit. Prøv noe kaldt og enkelt i små mengder: noen slurker smoothie eller et par riskjeks. Sitt oppreist, pust rolig ut, og gi det 15 minutter. Trykk «Dårlig» i magesjekken på I dag, så bytter ideene der til de mildeste.'),
+        action: null,
       };
     case 'appetite':
       return {
-        text: current
-          ? tr(`Totally normal with a sensitive stomach. Let's make it tiny: three bites or five sips, then stop. Small and often adds up. Next on the plan is ${current.info.title}. Even half counts.`, `Helt vanlig med en sensitiv mage. Vi gjør det bitte lite: tre biter eller fem slurker, og så stopper du. Lite og ofte blir mye til slutt. Neste i planen er ${current.info.title}. Selv halvparten teller.`)
-          : tr("Totally normal. You've done today's meals, so listen to your body. If you get a little hungry later, a small snack is a bonus.", 'Helt vanlig. Du har gjort dagens måltider, så lytt til kroppen. Blir du litt sulten senere, er et lite mellommåltid en bonus.'),
-        action: current ? 'today' : null,
+        text: tr("Totally normal with a sensitive stomach. Let's make it tiny: three bites or five sips, then stop. Small and often adds up, and whatever you have counts. Log it when you've had something.", 'Helt vanlig med en sensitiv mage. Vi gjør det bitte lite: tre biter eller fem slurker, og så stopper du. Lite og ofte blir mye til slutt, og alt du får i deg teller. Logg det når du har spist noe.'),
+        action: 'today',
       };
     case 'next': {
+      const ideas = ideasFor().items.filter((x) => x.t !== 'shake').slice(0, 3).map((x) => (typeof x.title === 'string' ? x.title : L(x.title)));
+      if (ideas.length) {
+        return {
+          text: tr(`There's no plan you have to follow. Eat what feels okay. If you want ideas: ${ideas.join(', ')}. Even a few bites count.`, `Det er ingen plan du må følge. Spis det som føles greit. Vil du ha ideer: ${ideas.join(', ')}. Selv noen biter teller.`),
+          action: 'today',
+        };
+      }
+      return localReply('snack');
+    }
+    case 'oldnext': {
       if (current && current.state === 'next') {
         const r = pickSnack();
         return {
@@ -97,7 +107,9 @@ function localReply(intent) {
       const change = w.length > 1 ? w[w.length - 1].kg - w[0].kg : null;
       const wk = weekSummary();
       const parts = [];
-      parts.push(tr(`You've done ${t.done} of ${t.total} meals today${calm ? '' : ` (${n0(t.kcal)} kcal${st.profile.goalKcal ? ` of ${n0(st.profile.goalKcal)}` : ''})`}.`, `Du har gjort ${t.done} av ${t.total} måltider i dag${calm ? '' : ` (${n0(t.kcal)} kcal${st.profile.goalKcal ? ` av ${n0(st.profile.goalKcal)}` : ''})`}.`));
+      const tt = dayTotals();
+      parts.push(calm ? tr(`You've eaten ${tt.n} ${tt.n === 1 ? 'time' : 'times'} today.`, `Du har spist ${tt.n} ${tt.n === 1 ? 'gang' : 'ganger'} i dag.`)
+        : tr(`Today so far: ${n0(tt.kcal)} kcal and ${Math.round(tt.p)} g protein.`, `I dag så langt: ${n0(tt.kcal)} kcal og ${Math.round(tt.p)} g protein.`));
       if (s >= 2) parts.push(tr(`${s} days in a row of logging.`, `${s} dager på rad med logging.`));
       if (change != null) parts.push(change >= 0 ? tr(`Weight is up ${n1(change)} kg since you started.`, `Vekten har gått opp ${n1(change)} kg siden du startet.`) : tr(`Weight is ${n1(Math.abs(change))} kg below where you started. Let's add one extra snack a day this week.`, `Vekten er ${n1(Math.abs(change))} kg under der du startet. La oss legge til ett ekstra mellommåltid om dagen denne uka.`));
       parts.push(wk.sessions ? tr(`${wk.sessions} training ${wk.sessions === 1 ? 'session' : 'sessions'} this week.`, `${wk.sessions} treningsøkt${wk.sessions === 1 ? '' : 'er'} denne uka.`) : tr('No training yet this week. A short walk is a great start.', 'Ingen trening ennå denne uka. En kort gåtur er en fin start.'));
@@ -126,7 +138,7 @@ function localReply(intent) {
 function actionButton(action) {
   if (!action) return '';
   if (action === 'gentle') return `<button class="btn small primary" style="align-self:flex-start" data-act="gentle">${icon('leaf', 16)} ${tr('Make today gentle', 'Gjør dagen mild')}</button>`;
-  if (action === 'today') return `<a class="btn small secondary" style="align-self:flex-start" href="#/today">${tr('See my next meal', 'Se neste måltid')}</a>`;
+  if (action === 'today') return `<a class="btn small secondary" style="align-self:flex-start" href="#/log">${tr('Log what I ate', 'Logg det jeg spiste')}</a>`;
   if (action === 'settings') return `<a class="btn small secondary" style="align-self:flex-start" href="#/settings/ai">${tr('Set up AI', 'Sett opp AI')}</a>`;
   if (action.startsWith('recipe:')) return `<a class="btn small secondary" style="align-self:flex-start" href="#/recipe/${esc(action.slice(7))}">${tr('Open recipe', 'Åpne oppskrift')}</a>`;
   return '';

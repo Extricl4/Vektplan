@@ -14,6 +14,7 @@ import { hasHealth, healthDay, fmtSleepCompact, sleepWindow, latestRestingHR, sy
 import { syncHealth } from './health.js';
 import { shortcutURL, markPending } from '../health.js';
 import { suppsCard, tickSupp, suppsSheet } from './supps.js';
+import { totalsCard, timeline, ideasCard, diaryActions } from './diary.js';
 import { todayLine } from '../encourage.js';
 
 const LEVELS = [
@@ -226,8 +227,6 @@ export function render() {
   const st = S();
   const key = dayKey();
   const d = peekDay(key);
-  const { list, current } = dayStatus(key);
-  const t = totals(key);
   const s = streak();
   const name = st.profile.name ? `, ${esc(st.profile.name)}` : '';
   return `<div class="screen">
@@ -242,16 +241,17 @@ export function render() {
       </div>
     </header>
     ${installNote()}
-    ${progressCard(list, t)}
+    ${totalsCard(key)}
+    <div class="log-cta"><a class="btn primary" href="#/log">${icon('plus', 20)} ${tr('Log what you ate', 'Logg det du spiste')}</a>
+      <a class="icon-btn surface" href="#/log" data-act="photoLog" aria-label="${tr('Log with a photo', 'Logg med bilde')}">${icon('camera', 22)}</a></div>
     <p class="cheer-line">${esc(todayLine(key))}</p>
-    ${gentleNote(d, current)}
-    ${nextCard(current, list)}
+    ${timeline(key)}
+    ${ideasCard(key)}
     ${tiles()}
     ${suppsCard(key)}
     ${watchHint()}
     ${watchCard()}
     ${stomachCard(d)}
-    ${eatenList(d)}
     ${wordsCard()}
   </div>${tabbar('today')}`;
 }
@@ -270,6 +270,8 @@ export function unmount() {
 }
 
 export const actions = {
+  ...diaryActions,
+  photoLog: () => { nav.go('log/photo'); },
   supp: (el) => tickSupp(el),
   suppEdit: () => suppsSheet(),
   ate: () => {

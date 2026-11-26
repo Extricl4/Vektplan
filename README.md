@@ -2,10 +2,10 @@
 
 Emil's personal app for eating a little more, a little more often — gently.
 
-- **Today**: a calm idea for the next meal (yours or the app's), progress for the day, kind words about how the day is going, supplements to tick off (creatine, protein powder, vitamins…), stomach check-in
-- **Food**: your own meals built from ingredients (save once, log in one tap), a meal plan that uses them, Vektplan's low-FODMAP recipes, or just meal times; recipes and a shopping list
+- **Today**: what you've eaten so far (calories, protein, fat, carbs) and when, one big "Log what you ate" button, ideas on the side if you want one, kind words, supplements to tick off (creatine, protein powder, vitamins…), stomach check-in
+- **Food**: a diary you can step back through day by day, your own meals built from ingredients (save once, log in one tap), Vektplan's low-FODMAP recipes, and a shopping list from the recipes you pick
 - **Log**: build what you ate from ingredients with everyday amounts (slices, glasses, spoons, pieces) or grams, small energy boosters for when you get full fast, type it ("2 slices of bread with cheese"), or snap a photo (AI estimate)
-- **Train**: beginner muscle programs (Start here ×2, full body ×3, upper/lower ×4) that adapt to where you train today (home or gym) and the equipment you have, with optional focus muscles, rep ranges, easier/harder versions, light days and a video link per exercise. Or build your own plan from scratch. Plus a food-for-training guide
+- **Train**: beginner muscle programs (Start here ×2, full body + focus day, full body ×3, upper/lower ×4) that adapt to where you train today (home or gym) and the equipment you have, with optional focus muscles, rep ranges, easier/harder versions, light days, and step-by-step how-to (what you need, steps, a tip, a video) for every exercise, plus an exercise guide. Or build your own plan from scratch. Plus a food-for-training guide
 - **Progress**: trends for 7 days to a year (weight, eaten, burned from the Watch, training, supplements, day by day, CSV export), journal, a pattern finder that links food to symptoms, BMI
 - **Coach**: quick help offline, full chat with an optional Claude API key
 - **Apple Watch**: sleep, resting pulse, HRV, active calories, steps, exercise minutes and weight,
@@ -35,6 +35,8 @@ installs it straight away.
 | `js/planner.js` | Meal plan, what's next, streaks |
 | `js/mymeals.js` | Your own meals: save, edit, log |
 | `js/amount.js` | Food amounts: everyday units and grams, calories per amount, the amount picker |
+| `js/nutrition.js` | Calories and macros per log and day; saving a log |
+| `js/ideas.js` | Food ideas on the side (time of day, stomach, training, protein) |
 | `js/supps.js` | Supplements: the daily tick list (protein powder also logs as food) |
 | `js/history.js` | One summary per day (food, weight, Watch, training, supplements) for trends and CSV |
 | `js/encourage.js` | Kind words about the day and after workouts |

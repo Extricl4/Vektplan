@@ -8,6 +8,7 @@ import {
   sessionById, updateSession, deleteSession, refillSession, setDay, training, getEx, exName, groupName, pickList, addCustomExercise, available, bestSet, resolveList,
 } from '../training.js';
 import { REPS } from '../data/programs.js';
+import { howToSheet } from './howto.js';
 import { esc, parseKey, addDays, startOfWeek, dayKey } from '../util.js';
 import { nav } from '../nav.js';
 
@@ -150,7 +151,7 @@ export function render() {
         const ex = getEx(e.id);
         const best = bestSet(e.id);
         return `<div class="exrow"><span class="n">${i + 1}</span>
-          <div class="grow" style="min-width:0"><p style="font-weight:600;line-height:1.3">${esc(exName(e.id))}</p>
+          <div class="grow" style="min-width:0"><button class="howrow" data-act="how" data-id="${esc(e.id)}"><span style="font-weight:600;line-height:1.3">${esc(exName(e.id))}</span><span class="q" aria-hidden="true">?</span></button>
             <p class="tiny muted">${esc((ex?.groups || []).slice(0, 2).map(groupName).join(' · '))}${best ? ` · ${tr('best', 'beste')} ${best.kg} kg` : ''}</p></div>
           <button class="btn tiny secondary num" data-act="sr" data-i="${i}">${e.sets} × ${e.lo && e.hi && ex?.mode !== 'time' ? `${e.lo}–${e.hi}` : e.reps}${ex?.mode === 'time' ? 's' : ''}</button>
           <div class="col" style="gap:2px"><button class="mini" data-act="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="${tr('Move up', 'Flytt opp')}">${icon('chevL', 14, 'style="transform:rotate(90deg)"')}</button>
@@ -176,6 +177,7 @@ export function render() {
 }
 
 export const actions = {
+  how: (el) => howToSheet(el.dataset.id),
   back: () => nav.back('train'),
   name: (el) => {
     const v = el.value.trim();

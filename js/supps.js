@@ -1,6 +1,7 @@
 // Supplements: a small daily tick list (creatine, protein powder, vitamins…).
 // Ticks live per day in days[key].supps = { id: timestamp }. Protein powder also logs itself as food.
-import { S, peekDay, day, mutate, addLog } from './store.js';
+import { S, peekDay, day, mutate } from './store.js';
+import { logItems } from './nutrition.js';
 import { tr, n0 } from './i18n.js';
 import { dayKey, addDays, uid } from './util.js';
 import { foodById, foodItem, packItem } from './amount.js';
@@ -88,14 +89,14 @@ export function suppStreak() {
 function shakeItems(x) {
   const items = [];
   const whey = foodById('whey');
-  if (whey) items.push(packItem(foodItem(whey, 1, 'mscoop')));
+  if (whey) items.push(foodItem(whey, 1, 'mscoop'));
   if (x.mix === 'milk') {
     const milk = foodById('lf-milk');
-    if (milk) items.push(packItem(foodItem(milk, 1, 'glass')));
+    if (milk) items.push(foodItem(milk, 1, 'glass'));
   }
   return items;
 }
-export const shakeKcal = (x) => shakeItems(x).reduce((a, i) => a + i.kcal, 0);
+export const shakeKcal = (x) => shakeItems(x).reduce((a, i) => a + packItem(i).kcal, 0);
 
 // Tick or untick. Returns { on, all, streak }.
 export function toggleSupp(id, key = dayKey()) {
@@ -104,13 +105,7 @@ export function toggleSupp(id, key = dayKey()) {
   const on = !isTicked(id, key);
   if (on && PRESETS[x.kind]?.food) {
     const items = shakeItems(x);
-    if (items.length) {
-      addLog(key, {
-        slot: null, title: tr('Protein shake', 'Proteinshake'), baseKcal: items.reduce((a, i) => a + i.kcal, 0), portion: 1,
-        items: items.map((i) => ({ name: i.name, kcal: i.kcal, amount: i.amount, unit: i.unit, fodmap: i.fodmap, tags: i.tags || [] })),
-        tags: ['protein'], fodmap: 'low', source: 'supp', supp: id,
-      });
-    }
+    if (items.length) logItems(key, items, { title: tr('Protein shake', 'Proteinshake'), source: 'supp', extra: { supp: id, tags: ['protein'] } });
   }
   mutate(() => {
     const d = day(key);

@@ -1,4 +1,6 @@
 // Meal actions shared by Today, Food and Recipe screens.
+import { RECIPE_MACROS } from './data/macros.js';
+import { dayTotals, proteinGoal } from './nutrition.js';
 import { S, peekDay, day, mutate, addLog, activeSlots } from './store.js';
 import { dayStatus, totals, setPlan, skipSlot, itemInfo } from './planner.js';
 import { RECIPES, POOLS, GENTLE, recipeById } from './data/recipes.js';
@@ -21,19 +23,18 @@ export function portionButtons(selected = 1, act = 'portion') {
 }
 
 export function cheer(key = dayKey()) {
-  const t = totals(key);
-  const left = t.total - t.done;
-  if (t.total && left === 0) return tr('Logged. That is every meal today. Amazing.', 'Logget. Alle dagens måltider er gjort. Sterkt.');
-  if (!t.done) return tr('Logged. Every bite counts.', 'Logget. Hver bit teller.');
+  const t = dayTotals(key);
+  const goal = proteinGoal();
+  if (t.n <= 1) return tr('Logged. Every bite counts.', 'Logget. Hver bit teller.');
+  if (goal && t.p >= goal && !S().prefs.calm) return tr('Logged. Protein goal reached today. Brilliant.', 'Logget. Proteinmålet er nådd i dag. Strålende.');
   const lines = [
-    tr(`Logged. ${t.done} of ${t.total} meals done.`, `Logget. ${t.done} av ${t.total} måltider gjort.`),
-    tr(`Nice. ${t.done} of ${t.total} done, keep it steady.`, `Fint. ${t.done} av ${t.total} gjort, fortsett jevnt.`),
-    tr(`Good job. ${t.done} of ${t.total} meals so far.`, `Bra jobba. ${t.done} av ${t.total} måltider så langt.`),
+    tr(`Logged. That's ${t.n} times today, nice and steady.`, `Logget. Det er ${t.n} ganger i dag, fint og jevnt.`),
+    tr('Logged. Small and often adds up.', 'Logget. Lite og ofte blir mye.'),
+    tr(`Good job. ${t.n} so far today.`, `Bra jobba. ${t.n} så langt i dag.`),
   ];
-  return lines[(t.done + t.logs) % lines.length];
+  return lines[t.n % lines.length];
 }
 
-// Log the planned item for a slot.
 export function logPlanned(key, entry, portion = 1) {
   const info = itemInfo(entry.item);
   if (info.mine) { logMyMeal(key, info.mine, entry.slot.id, portion); return; }
@@ -193,7 +194,7 @@ export function logRecipeSheet(key, recipe, slotId) {
     actions: {
       portion: (el, e, sheet) => {
         const slot = sheet.querySelector('#lr-slot').value || null;
-        addLog(key, { slot, title: L(recipe.name), baseKcal: recipe.kcal, portion: Number(el.dataset.p), rid: recipe.id, fodmap: 'low', source: 'recipe' });
+        addLog(key, { slot, title: L(recipe.name), baseKcal: recipe.kcal, mac: RECIPE_MACROS[recipe.id] || null, portion: Number(el.dataset.p), rid: recipe.id, fodmap: 'low', source: 'recipe' });
         closeSheet(); toast(cheer(key)); nav.rerender();
       },
     },

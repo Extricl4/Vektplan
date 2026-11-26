@@ -26,6 +26,7 @@ export const SLOTS = {
   triceps2: { g: ['triceps'], c: ['ohext:dumbbell', 'skull:dumbbell', 'bandpushdown:band', 'diamond:none', 'benchdip:none'] },
   core: { g: ['core'], c: ['deadbug:none'] },
   core2: { g: ['core'], c: ['plank:none', 'birddog:none'] },
+  core3: { g: ['core'], c: ['sideplank:none', 'birddog:none'] },
 };
 const cand = (slot) => (SLOTS[slot]?.c || []).map((x) => x.split(':'));
 
@@ -39,16 +40,20 @@ export function slotPick(slot, equip, used = new Set()) {
 export const slotIds = (slot) => [...new Set(cand(slot).map(([id]) => id))];
 
 // Muscles you can put extra focus on, and the slots that train them (best first).
+// `slots` = what a full-body or upper/lower day adds; `day` = what a focus day trains (best first).
 export const FOCUS = {
-  chest: { name: N('Chest', 'Bryst'), slots: ['push', 'push2', 'fly'], kinds: ['full', 'upper'] },
-  back: { name: N('Back', 'Rygg'), slots: ['row', 'pulldown', 'rear'], kinds: ['full', 'upper'] },
-  shoulders: { name: N('Shoulders', 'Skuldre'), slots: ['side', 'press', 'rear'], kinds: ['full', 'upper'] },
-  arms: { name: N('Arms', 'Armer'), slots: ['biceps', 'triceps', 'biceps2', 'triceps2'], kinds: ['full', 'upper'], min: 2, each: [['biceps', 'biceps2'], ['triceps', 'triceps2']] },
-  legs: { name: N('Legs', 'Bein'), slots: ['squat', 'lunge', 'legcurl'], kinds: ['full', 'lower'] },
-  glutes: { name: N('Glutes', 'Sete'), slots: ['hinge', 'glute', 'lunge'], kinds: ['full', 'lower'] },
-  core: { name: N('Core', 'Kjerne'), slots: ['core', 'core2'], kinds: ['full', 'lower', 'upper'], min: 1 },
+  chest: { name: N('Chest', 'Bryst'), slots: ['push', 'push2', 'fly'], day: ['push2', 'fly', 'push'], kinds: ['full', 'upper'] },
+  back: { name: N('Back', 'Rygg'), slots: ['row', 'pulldown', 'rear'], day: ['pulldown', 'row', 'rear'], kinds: ['full', 'upper'] },
+  shoulders: { name: N('Shoulders', 'Skuldre'), slots: ['side', 'press', 'rear'], day: ['side', 'press', 'rear'], kinds: ['full', 'upper'] },
+  biceps: { name: N('Biceps', 'Biceps'), slots: ['biceps', 'biceps2'], day: ['biceps', 'biceps2'], kinds: ['full', 'upper'] },
+  triceps: { name: N('Triceps', 'Triceps'), slots: ['triceps', 'triceps2'], day: ['triceps', 'triceps2'], kinds: ['full', 'upper'] },
+  legs: { name: N('Legs', 'Bein'), slots: ['squat', 'lunge', 'legcurl'], day: ['squat', 'lunge', 'legcurl'], kinds: ['full', 'lower'] },
+  glutes: { name: N('Glutes', 'Sete'), slots: ['hinge', 'glute', 'lunge'], day: ['glute', 'hinge'], kinds: ['full', 'lower'] },
+  core: { name: N('Core', 'Kjerne'), slots: ['core', 'core2'], day: ['core', 'core2', 'core3'], kinds: ['full', 'lower', 'upper'], min: 1 },
 };
-export const FOCUS_ORDER = ['chest', 'back', 'shoulders', 'arms', 'legs', 'glutes', 'core'];
+export const FOCUS_ORDER = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'glutes', 'core'];
+// Older plans had one "arms" focus.
+export const normFocus = (list = []) => [...new Set(list.flatMap((f) => (f === 'arms' ? ['biceps', 'triceps'] : [f])))].filter((f) => FOCUS[f]);
 
 export const REPS = {
   grow: { lo: 8, hi: 12, name: N('8–12 reps', '8–12 reps'), sub: N('The classic range for muscle growth. Recommended.', 'Det klassiske området for muskelvekst. Anbefalt.') },
@@ -91,7 +96,20 @@ export const PROGRAMS = {
     ],
   },
 };
-export const PROGRAM_ORDER = ['start2', 'full3', 'ul4'];
+PROGRAMS.focus3 = {
+  name: N('Full body + focus day', 'Hele kroppen + fokusdag'),
+  tag: N('Pick your muscles', 'Velg muskler'),
+  sub: N('Full body on two days, and a short day in between just for the muscles you want most, for example biceps and core.', 'Hele kroppen to dager, og en kort dag imellom bare for musklene du vil ha mest, for eksempel biceps og kjerne.'),
+  days: [0, 2, 4],
+  focusDay: true,
+  defaultFocus: ['biceps', 'core'],
+  sessions: [
+    { key: 'A', kind: 'full', name: N('Full body A', 'Hele kroppen A'), slots: ['squat', 'push', 'row', 'side', 'hinge', 'calves'] },
+    { key: 'F', kind: 'focus', name: N('Focus day', 'Fokusdag'), slots: [] },
+    { key: 'B', kind: 'full', name: N('Full body B', 'Hele kroppen B'), slots: ['hinge', 'push2', 'pulldown', 'lunge', 'rear', 'calves'] },
+  ],
+};
+export const PROGRAM_ORDER = ['start2', 'focus3', 'full3', 'ul4'];
 
 // An easier and a harder version of the same movement (for "too hard today" / "too easy").
 export const EASIER = {

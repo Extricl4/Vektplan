@@ -1,6 +1,7 @@
 // Optional AI features, using the user's own Claude API key (stored only on this phone).
 // Calls go straight from the phone to api.anthropic.com.
 import { suppList, suppText } from './supps.js';
+import { dayTotals, logMac } from './nutrition.js';
 import { lastDays, rangeStats } from './history.js';
 import { S, peekDay } from './store.js';
 import { workoutDef, exName, training } from './training.js';
@@ -75,10 +76,10 @@ const TAGS = ['wheat', 'lactose', 'garlic_onion', 'fructose', 'polyol', 'gos', '
 // Estimate a meal from a photo and/or a description.
 export async function estimateMeal({ text = '', image = null }) {
   const system = `You estimate meals for a personal food log app. The user follows a low-FODMAP diet (Monash University guidance), has a sensitive stomach, and is trying to gain weight gently.
-Identify each food or drink, estimate a realistic portion and its energy in kcal. When unsure, give your best typical estimate rather than refusing.
+Identify each food or drink, estimate a realistic portion, its energy in kcal and its protein, fat and carbohydrate in grams. When unsure, give your best typical estimate rather than refusing.
 Rate each item's FODMAP level at that portion: "low", "moderate", "high", or "check" (depends on the product/recipe, e.g. sauces, processed meat).
 Return ONLY valid JSON, no markdown:
-{"title": "short meal name", "items": [{"name": "...", "portion": "e.g. 1 cup / 130 g", "kcal": 0, "fodmap": "low", "reason": "short reason if not low, else empty", "tags": []}], "question": "one short question if something important for FODMAP or calories is unclear, else empty"}
+{"title": "short meal name", "items": [{"name": "...", "portion": "e.g. 1 cup / 130 g", "kcal": 0, "protein_g": 0, "fat_g": 0, "carbs_g": 0, "fodmap": "low", "reason": "short reason if not low, else empty", "tags": []}], "question": "one short question if something important for FODMAP or calories is unclear, else empty"}
 Allowed tags: ${TAGS.join(', ')}. Use tags for what the item contains (e.g. wheat bread -> wheat; regular milk -> lactose; garlic, onion -> garlic_onion; fried food -> fatty).
 Write title, names, portions, reasons and the question in ${LANG_NAME()}.`;
   const content = [];
@@ -94,6 +95,7 @@ Write title, names, portions, reasons and the question in ${LANG_NAME()}.`;
     name: String(it.name || '').slice(0, 80),
     portion: String(it.portion || '').slice(0, 60),
     kcal: Math.max(0, Math.round(Number(it.kcal) || 0)),
+    m: ['protein_g', 'fat_g', 'carbs_g'].every((k) => it[k] == null) ? null : ['protein_g', 'fat_g', 'carbs_g'].map((k) => Math.max(0, Math.min(500, Number(it[k]) || 0))),
     fodmap: ['low', 'moderate', 'high', 'check'].includes(it.fodmap) ? it.fodmap : 'check',
     reason: String(it.reason || '').slice(0, 160),
     tags: (it.tags || []).filter((t) => TAGS.includes(t)),
@@ -105,8 +107,6 @@ export function contextText() {
   const st = S();
   const key = dayKey();
   const d = peekDay(key);
-  const { list } = dayStatus(key);
-  const t = totals(key);
   const lines = [];
   lines.push(`Now: ${new Date().toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`);
   if (st.profile.name) lines.push(`Name: ${st.profile.name}.`);
@@ -114,13 +114,13 @@ export function contextText() {
   const w = st.weights;
   if (w.length) lines.push(`Weight: latest ${w[w.length - 1].kg} kg (${w[w.length - 1].date})${w.length > 1 ? `, first logged ${w[0].kg} kg (${w[0].date})` : ''}.`);
   if (st.prefs.calm) lines.push('Calm mode is ON: never mention calorie numbers.');
-  else lines.push(`Energy eaten today: ${t.kcal} kcal${st.profile.goalKcal ? `, the user's own daily goal is ${st.profile.goalKcal} kcal` : ' (no calorie goal set)'}.`);
-  lines.push(`Meals today (${t.done} of ${t.total} done):`);
-  for (const x of list) {
-    lines.push(`- ${x.time} ${x.slot.kind}: planned "${x.info.title}" [${x.state}]${x.logs.length ? `; ate ${x.logs.map((l) => `${l.title}${l.portion && l.portion < 1 ? ` (${Math.round(l.portion * 100)}%)` : ''}`).join(', ')}` : ''}`);
+  else {
+    const tt = dayTotals(key);
+    lines.push(`Eaten today: ${tt.kcal} kcal, protein ${Math.round(tt.p)} g, fat ${Math.round(tt.f)} g, carbs ${Math.round(tt.c)} g${st.profile.goalKcal ? `; his own daily calorie goal is ${st.profile.goalKcal} kcal` : ' (no calorie goal set)'}${st.profile.goalProtein ? `; his own protein goal is ${st.profile.goalProtein} g` : ''}.`);
   }
-  const extra = d.logs.filter((l) => !l.slot);
-  if (extra.length) lines.push(`Other food today: ${extra.map((l) => `${clock(l.ts)} ${l.title}`).join('; ')}`);
+  lines.push('There is no meal plan: he logs what he eats himself and the app only offers ideas on the side. Never tell him what he must eat or when.');
+  const logs = d.logs.slice().sort((a, b) => a.ts - b.ts);
+  lines.push(logs.length ? `Food logged today: ${logs.map((l) => { const m = logMac(l); return `${clock(l.ts)} ${l.title}${l.portion && l.portion < 1 ? ` (${Math.round(l.portion * 100)}%)` : ''}${!st.prefs.calm ? ` ${l.kcal} kcal${m ? `, ${Math.round(m[0])} g protein` : ''}` : ''}`; }).join('; ')}.` : 'Nothing logged yet today.');
   if (d.stomach?.length) lines.push(`Stomach check-ins today: ${d.stomach.map((s) => `${clock(s.ts)} ${s.level}`).join(', ')}`);
   const j = d.journal;
   if (j) {

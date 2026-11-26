@@ -5,7 +5,8 @@ import { icon, toast, confirmSheet, openSheet, closeSheet } from '../ui.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey } from '../util.js';
 import { nav } from '../nav.js';
 import { PLACES, PLACE_ORDER, EQUIP, EQUIP_ORDER } from '../data/exercises.js';
-import { PROGRAMS, PROGRAM_ORDER, FOCUS, FOCUS_ORDER, REPS } from '../data/programs.js';
+import { PROGRAMS, PROGRAM_ORDER, FOCUS, FOCUS_ORDER, REPS, normFocus } from '../data/programs.js';
+import { howToSheet, needsLine } from './howto.js';
 import { training, programReady, LEVELS, buildProgram, applyProgram, allowedEquip, setEquip, exName, getEx } from '../training.js';
 
 const WD = () => Array.from({ length: 7 }, (_, i) => dayShort(parseKey(addDays(startOfWeek(dayKey()), i))));
@@ -14,12 +15,12 @@ let cfg = null;
 function fresh(id) {
   const t = training();
   const cur = t.program;
-  if (cur && cur.id === id) return { ...cur, days: [...cur.days], focus: [...(cur.focus || [])] };
+  if (cur && cur.id === id) return { ...cur, days: [...cur.days], focus: normFocus(cur.focus) };
   return {
     id,
     days: [...PROGRAMS[id].days],
     place: cur?.place || (PLACES[t.place] && !PLACES[t.place].hidden ? t.place : 'home'),
-    focus: cur?.focus ? [...cur.focus] : [],
+    focus: PROGRAMS[id].focusDay && !normFocus(cur?.focus).length ? [...PROGRAMS[id].defaultFocus] : normFocus(cur?.focus),
     level: cur?.level || t.level || 'gentle',
     reps: cur?.reps || 'grow',
     rest: cur?.rest || 'mix',
@@ -68,9 +69,10 @@ function preview() {
       <div class="list">${s.ex.map((e) => {
         const x = getEx(e.id);
         const goal = x?.mode === 'time' ? `${e.sets} × ${e.reps} s` : `${e.sets} × ${e.lo && e.hi ? `${e.lo}–${e.hi}` : e.reps}`;
-        return `<div class="item" style="gap:10px;padding:10px 0">${e.focus ? `<span class="dot" style="background:var(--accent-line)" title="${tr('Focus', 'Fokus')}"></span>` : '<span class="dot" style="background:var(--surface2)"></span>'}
-          <span class="grow" style="min-width:0">${esc(exName(e.id))}</span><span class="small muted num" style="white-space:nowrap">${goal}</span></div>`;
-      }).join('')}</div></section>`).join('')}
+        return `<button class="item" data-act="how" data-id="${esc(e.id)}" style="gap:10px;padding:10px 0">${e.focus ? `<span class="dot" style="background:var(--accent-line)" title="${tr('Focus', 'Fokus')}"></span>` : '<span class="dot" style="background:var(--surface2)"></span>'}
+          <span class="grow" style="min-width:0">${esc(exName(e.id))}</span><span class="small muted num" style="white-space:nowrap">${goal}</span><span class="q" style="flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:grid;place-items:center" aria-hidden="true">?</span></button>`;
+      }).join('')}</div>
+      <p class="tiny soft">${icon('dumbbell', 13, 'style="vertical-align:-2px"')} ${tr('You need', 'Du trenger')}: ${esc(needsLine(s.ex.map((e) => e.id)))}</p></section>`).join('')}
     ${cfg.focus.length ? `<p class="tiny muted">${tr('Blue dot = focus muscle: an extra exercise and one more set.', 'Blå prikk = fokusmuskel: en ekstra øvelse og ett sett til.')}</p>` : ''}</div>`;
 }
 
@@ -83,7 +85,7 @@ export function render() {
     <header class="head"><button class="icon-btn surface" data-act="back" aria-label="${tr('Back', 'Tilbake')}">${icon('chevL', 20)}</button>
       <div class="titles grow"><p class="eyebrow">${tr('Training plan', 'Treningsplan')}</p><h1 class="h1" style="font-size:26px">${esc(L(prog.name))}</h1></div></header>
 
-    <div class="seg" style="grid-auto-columns:minmax(0,1fr)">${PROGRAM_ORDER.map((id) => `<button aria-pressed="${cfg.id === id}" data-act="prog" data-v="${id}">${esc(L(PROGRAMS[id].name))}</button>`).join('')}</div>
+    <div class="chips">${PROGRAM_ORDER.map((id) => `<button class="chip solid" aria-pressed="${cfg.id === id}" data-act="prog" data-v="${id}">${esc(L(PROGRAMS[id].name))}</button>`).join('')}</div>
     <p class="soft" style="line-height:1.5;margin:0 4px">${esc(L(prog.sub))}</p>
 
     <section class="card">
@@ -102,8 +104,8 @@ export function render() {
     </section>
 
     <section class="card">
-      <h2 class="h3">${tr('Extra focus (optional)', 'Ekstra fokus (valgfritt)')}</h2>
-      <p class="small soft" style="line-height:1.45">${tr('Want some muscles to grow faster? They get an extra exercise and one more set. 1–2 works best.', 'Vil du at noen muskler skal vokse fortere? De får en ekstra øvelse og ett sett til. 1–2 fungerer best.')}</p>
+      <h2 class="h3">${prog.focusDay ? tr('Muscles for the focus day', 'Muskler for fokusdagen') : tr('Extra focus (optional)', 'Ekstra fokus (valgfritt)')}</h2>
+      <p class="small soft" style="line-height:1.45">${prog.focusDay ? tr('The day in between trains only these, and the full-body days include one exercise for each. 1–2 works best.', 'Dagen imellom trener bare disse, og helkroppsdagene har én øvelse for hver. 1–2 fungerer best.') : tr('Want some muscles to grow faster? They get an extra exercise and one more set. 1–2 works best.', 'Vil du at noen muskler skal vokse fortere? De får en ekstra øvelse og ett sett til. 1–2 fungerer best.')}</p>
       <div class="chips">${FOCUS_ORDER.map((f) => `<button class="chip solid" aria-pressed="${cfg.focus.includes(f)}" data-act="focus" data-v="${f}">${esc(L(FOCUS[f].name))}</button>`).join('')}</div>
       ${cfg.focus.length > 2 ? `<p class="tiny" style="color:var(--amber)">${tr('Many focus muscles make sessions longer, and the extras get shared out. Fewer often grows more.', 'Mange fokusmuskler gir lengre økter, og ekstraøvelsene må deles. Færre gir ofte mer vekst.')}</p>` : ''}
     </section>
@@ -126,11 +128,12 @@ export function render() {
 }
 
 export const actions = {
+  how: (el) => howToSheet(el.dataset.id),
   back: () => { cfg = null; nav.back('train'); },
   prog: (el) => {
     const id = el.dataset.v;
     if (!PROGRAMS[id] || id === cfg.id) return;
-    cfg = { ...cfg, id, days: [...PROGRAMS[id].days] };
+    cfg = { ...cfg, id, days: [...PROGRAMS[id].days], focus: PROGRAMS[id].focusDay && !cfg.focus.length ? [...PROGRAMS[id].defaultFocus] : cfg.focus };
     nav.rerender();
   },
   day: (el) => {

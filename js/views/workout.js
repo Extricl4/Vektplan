@@ -6,6 +6,7 @@ import { icon, toast, confirmSheet, openSheet, closeSheet } from '../ui.js';
 import { workoutDef, getEx, exName, groupName, lastLog, progressHint, alternatives, restSeconds, saveWorkout, activityName, newBests, kgFmt, currentPlace, setTodayPlace, resolveList, easierOf, harderOf } from '../training.js';
 import { PLACES, PLACE_ORDER } from '../data/exercises.js';
 import { workoutCheer } from '../encourage.js';
+import { howToSheet, needsLine } from './howto.js';
 import { weighted, kgStep } from '../data/exercises.js';
 import { esc, parseKey, dayKey } from '../util.js';
 import { nav } from '../nav.js';
@@ -167,8 +168,10 @@ function exerciseView(a) {
         <h2 class="h1" style="font-size:25px">${esc(L(ex.name))}</h2></div>
         ${mobility ? '' : `<button class="btn tiny secondary" data-act="swap">${icon('swap', 15)} ${tr('Swap', 'Bytt')}</button>`}</div>
       ${L(ex.cue) ? `<p class="soft" style="line-height:1.55">${esc(L(ex.cue))}</p>` : ''}
+      ${idx === 0 && !sets.length && !mobility ? `<p class="small soft">${icon('dumbbell', 14, 'style="vertical-align:-2px"')} <b>${tr('Today you need', 'I dag trenger du')}:</b> ${esc(needsLine(list.map((e) => e.id)))}</p>` : ''}
       <div class="row wrap" style="gap:8px">
-        <a class="link-btn small" href="${esc(video)}" target="_blank" rel="noopener">${icon('play', 14)} ${tr('Watch how it is done', 'Se hvordan den gjøres')}</a>
+        <button class="btn tiny primary" data-act="how">${icon('book', 14)} ${tr('How to', 'Slik gjør du')}</button>
+        <a class="link-btn small" href="${esc(video)}" target="_blank" rel="noopener">${icon('play', 14)} ${tr('Video', 'Video')}</a>
         ${easier && !mobility ? `<button class="btn tiny secondary" data-act="variant" data-id="${easier}">${tr('Easier', 'Lettere')}</button>` : ''}
         ${harder && !mobility ? `<button class="btn tiny secondary" data-act="variant" data-id="${harder}">${tr('Harder', 'Tyngre')}</button>` : ''}</div>
       <div class="row wrap" style="gap:6px"><span class="badge accent">${tr('Goal', 'Mål')}: ${target.sets} × ${range ? `${range.lo}–${range.hi}` : target.reps}${isTime ? ' s' : ''}</span>
@@ -392,6 +395,7 @@ function doSwap(idx, id) {
 export const actions = {
   leave: () => nav.go('train'),
   variant: (el) => { const { idx } = current(); doSwap(idx, el.dataset.id); },
+  how: () => { const { exId } = current(); howToSheet(exId); },
   placePick: () => {
     const a = S().activeWorkout;
     const cur = a.place || currentPlace();

@@ -5,7 +5,7 @@ import { S, mutate, addLog } from './store.js';
 import { tr, n0 } from './i18n.js';
 import { uid } from './util.js';
 import { nav } from './nav.js';
-import { mealKcal } from './amount.js';
+import { mealKcal, mealMacros } from './amount.js';
 
 export const WHEN = [
   ['breakfast', () => tr('Breakfast', 'Frokost')],
@@ -65,7 +65,8 @@ export function logMyMeal(key, meal, slotId, portion = 1) {
     baseKcal: mealKcal(meal),
     portion,
     myId: meal.id,
-    items: (meal.items || []).map((i) => ({ name: i.name, kcal: i.kcal || 0, amount: i.amount, unit: i.unit, fodmap: i.fodmap, tags: i.tags || [] })),
+    mac: mealMacros(meal),
+    items: (meal.items || []).map((i) => ({ name: i.name, kcal: i.kcal || 0, amount: i.amount, unit: i.unit, fodmap: i.fodmap, tags: i.tags || [], ...(i.p != null ? { p: i.p, f: i.f, c: i.c } : {}) })),
     tags: [...new Set((meal.items || []).flatMap((i) => i.tags || []))],
     fodmap: meal.fodmap || 'low',
     source: 'mine',

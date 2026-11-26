@@ -277,7 +277,7 @@ function trendsTab() {
     <p class="cheer-line" style="margin-top:0">${esc(summaryLine(st))}</p>
     <div class="grid2">
       <div class="tile"><span class="small muted">${calm ? tr('Days with food', 'Dager med mat') : tr('Eaten / day', 'Spist / dag')}</span>
-        <span class="big num">${calm ? `${st.loggedDays}/${st.n}` : st.eatenAvg != null ? n0(st.eatenAvg) : '–'}</span><span class="tiny muted">${calm ? tr('days logged', 'dager logget') : st.eatenAvg != null ? tr('kcal, on days you logged', 'kcal, dager du logget') : tr('nothing logged yet', 'ingenting logget ennå')}</span></div>
+        <span class="big num">${calm ? `${st.loggedDays}/${st.n}` : st.eatenAvg != null ? n0(st.eatenAvg) : '–'}</span><span class="tiny muted">${calm ? tr('days logged', 'dager logget') : st.eatenAvg != null ? `${tr('kcal', 'kcal')}${st.proteinAvg ? ` · ${Math.round(st.proteinAvg)} g ${tr('protein', 'protein')}` : ''}` : tr('nothing logged yet', 'ingenting logget ennå')}</span></div>
       ${calm ? `<div class="tile"><span class="small muted">${tr('Supplements', 'Tilskudd')}</span><span class="big num">${st.suppDays}/${st.n}</span><span class="tiny muted">${tr('days all ticked', 'dager alt krysset av')}</span></div>`
         : burnedVal != null ? `<a class="tile" href="#/health"><span class="small muted">${burnedLabel}</span><span class="big num">${n0(burnedVal)}</span><span class="tiny muted">${tr('kcal, from your Watch', 'kcal, fra klokka')}</span></a>`
         : `<a class="tile" href="#/health"><span class="small muted">${tr('Burned', 'Forbrent')}</span><span class="big">${icon('watch', 26)}</span><span class="tiny" style="font-weight:600;color:var(--accent)">${tr('Connect your Watch', 'Koble til klokka')}</span></a>`}

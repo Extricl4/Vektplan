@@ -5,7 +5,7 @@ import { LIB, GROUPS, GROUP_ORDER, PLACES, weighted, kgStep } from './data/exerc
 import { WORKOUTS, WEEK_PLAN, OTHER_ACTIVITIES } from './data/workouts.js';
 import { L, tr } from './i18n.js';
 import { dayKey, weekday, dayNum, startOfWeek, uid } from './util.js';
-import { SLOTS, slotIds, slotPick, FOCUS, FOCUS_ORDER, PROGRAMS, REPS, EASIER, HARDER } from './data/programs.js';
+import { SLOTS, slotIds, slotPick, FOCUS, FOCUS_ORDER, PROGRAMS, REPS, EASIER, HARDER, normFocus } from './data/programs.js';
 
 const N = (en, nb) => ({ en, nb });
 
@@ -377,6 +377,7 @@ export function shortName(id) {
   if (id === 'strengthA' || id === 'strengthB') return tr('Strength', 'Styrke');
   const s = sessionById(id);
   if (!s) return '';
+  if (s.kind === 'focus') return tr('Focus', 'Fokus');
   if (s.key && s.kind) {
     const letter = s.key.slice(-1);
     return `${s.kind === 'upper' ? tr('Upper', 'Over') : s.kind === 'lower' ? tr('Lower', 'Under') : tr('Full', 'Hel')} ${letter}`;
@@ -488,10 +489,23 @@ export function buildProgram(cfg) {
   const level = LEVELS[cfg.level] ? cfg.level : 'gentle';
   const lvl = LEVELS[level];
   const range = REPS[cfg.reps] || REPS.grow;
-  const focus = FOCUS_ORDER.filter((f) => (cfg.focus || []).includes(f));
+  const chosen = normFocus(cfg.focus);
+  const focus = FOCUS_ORDER.filter((f) => (chosen.length ? chosen : prog.focusDay ? prog.defaultFocus : []).includes(f));
   const place = PLACES[cfg.place] ? cfg.place : 'home';
   const days = [...new Set((cfg.days?.length ? cfg.days : prog.days).map(Number))].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
   const made = prog.sessions.map((t, k) => {
+    // A focus day: only the focus muscles, taking turns so each muscle rests between its exercises.
+    if (t.kind === 'focus') {
+      const lists = focus.map((f) => FOCUS[f].day.slice());
+      const slots = [];
+      for (let round = 0; slots.length < lvl.maxN + 1 && lists.some((l) => l.length); round++) {
+        for (const l of lists) if (l.length && slots.length < lvl.maxN + 1) { const x = l.shift(); if (!slots.includes(x)) slots.push(x); }
+      }
+      const items = slots.map((slot) => ({ id: slotIds(slot)[0], slot, sets: lvl.sets + 1, reps: range.hi, lo: range.lo, hi: range.hi, focus: true }));
+      const ex = resolveList(items, place).map((e) => (LIB[e.id]?.mode === 'time' ? { ...e, reps: LIB[e.id].def } : e));
+      const name = `${tr('Focus', 'Fokus')}: ${focus.map((f) => L(FOCUS[f].name)).join(' + ')}`;
+      return { id: 's-' + uid(), key: t.key, kind: 'focus', name, groups: [...new Set(slots.flatMap((x) => SLOTS[x].g))], ex };
+    }
     const slots = t.slots.slice();
     const isFocus = (slot) => focus.some((f) => FOCUS[f].kinds.includes(t.kind) && FOCUS[f].slots.includes(slot));
     // The first three (the big lifts: legs, push, pull) always stay, so the body stays balanced.
@@ -504,7 +518,7 @@ export function buildProgram(cfg) {
       if (!F.kinds.includes(t.kind)) continue;
       // Arms: always one biceps and one triceps exercise.
       for (const pair of F.each || []) if (!pair.some((x) => slots.includes(x))) slots.splice(at++, 0, pair[k % pair.length]);
-      let need = (F.min ?? 2) - slots.filter((x) => F.slots.includes(x)).length;
+      let need = (prog.focusDay ? 1 : F.min ?? 2) - slots.filter((x) => F.slots.includes(x)).length;
       // Rotate the extras between sessions so A and B don't get the same ones.
       const order = F.min === 2 && f === 'arms' ? F.slots : [...F.slots.slice(k % F.slots.length), ...F.slots.slice(0, k % F.slots.length)];
       for (const x of order) {
@@ -521,7 +535,7 @@ export function buildProgram(cfg) {
       if (i < KEEP) break;
       slots.splice(i, 1);
     }
-    const items = slots.map((slot) => ({ id: slotIds(slot)[0], slot, sets: lvl.sets + (isFocus(slot) ? 1 : 0), reps: range.hi, lo: range.lo, hi: range.hi, ...(isFocus(slot) ? { focus: true } : {}) }));
+    const items = slots.map((slot) => ({ id: slotIds(slot)[0], slot, sets: lvl.sets + (isFocus(slot) && !prog.focusDay ? 1 : 0), reps: range.hi, lo: range.lo, hi: range.hi, ...(isFocus(slot) ? { focus: true } : {}) }));
     const ex = resolveList(items, place).map((e) => (LIB[e.id]?.mode === 'time' ? { ...e, reps: LIB[e.id].def } : e));
     return { id: 's-' + uid(), key: t.key, kind: t.kind, name: L(t.name), groups: [...new Set(slots.flatMap((x) => SLOTS[x].g))], ex };
   });
