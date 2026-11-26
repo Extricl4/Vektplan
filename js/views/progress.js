@@ -6,6 +6,7 @@ import { icon, tabbar, weightChart, openSheet, closeSheet, toast, sparkline } fr
 import { esc, dayKey, addDays, parseKey, debounce, clock, download } from '../util.js';
 import { lastDays, rangeStats, weeks, daySummary, hasData, historyCSV } from '../history.js';
 import { suppList, suppName, ticks } from '../supps.js';
+import { dayChart, legend } from './charts.js';
 import { nav } from '../nav.js';
 import { hasHealth, healthDay, fmtSleep } from '../health.js';
 
@@ -288,9 +289,11 @@ function trendsTab() {
     ${bodyCard(st)}
     <section class="card" aria-label="${calm ? tr('Food logged', 'Mat logget') : tr('Eaten and burned', 'Spist og forbrent')}">
       <div class="row between"><h2 class="h3">${calm ? tr('Food logged', 'Mat logget') : tr('Eaten and burned', 'Spist og forbrent')}</h2>${long ? `<span class="tiny muted">${tr('weekly average', 'snitt per uke')}</span>` : ''}</div>
-      ${barChart(items, { calm, label: calm ? tr('Foods logged per day', 'Mat logget per dag') : tr('Calories eaten and burned per day', 'Kalorier spist og forbrent per dag') })}
+      ${!calm && !long ? `${dayChart(days.map((d) => d.key), { burned: Object.fromEntries(days.filter((d) => d.burned != null).map((d) => [d.key, d.burned])), label: tr('Calories per day by protein, carbs and fat, with calories burned', 'Kalorier per dag fordelt på protein, karbo og fett, med forbrenning') })}
+        ${legend([[tr('No macro info', 'Uten makroinfo'), 'background:var(--c-unknown)'], ...(days.some((d) => d.burned != null) ? [[tr('Burned (Watch)', 'Forbrent (klokka)'), 'border:1.5px solid var(--muted)']] : [])])}`
+        : `${barChart(items, { calm, label: calm ? tr('Foods logged per day', 'Mat logget per dag') : tr('Calories eaten and burned per day', 'Kalorier spist og forbrent per dag') })}
       <div class="row wrap" style="gap:14px"><span class="tiny row" style="gap:6px"><i class="sw a"></i>${calm ? tr('Things logged', 'Ting logget') : tr('Eaten', 'Spist')}</span>
-        ${!calm && items.some((i) => i.b != null) ? `<span class="tiny row" style="gap:6px"><i class="sw b"></i>${tr('Burned (Watch)', 'Forbrent (klokka)')}</span>` : ''}</div>
+        ${!calm && items.some((i) => i.b != null) ? `<span class="tiny row" style="gap:6px"><i class="sw b"></i>${tr('Burned (Watch)', 'Forbrent (klokka)')}</span>` : ''}</div>`}
       ${note ? `<p class="small soft" style="line-height:1.5">${esc(note)}</p>` : ''}
     </section>
     <section class="card" aria-label="${tr('Habits', 'Vaner')}">

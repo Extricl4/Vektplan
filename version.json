@@ -1,9 +1,15 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "date": "2026-11-26",
-  "notes": "Food is now a diary: log what you ate, how much and when, and see calories, protein, fat and carbs. The meal plan is gone; ideas sit on the side if you want one. Training: how-to for every exercise with what you need, an exercise guide, and a new Full body + focus day plan (for example biceps and core on Wednesday).",
-  "notes_nb": "Maten er nå en dagbok: logg hva du spiste, hvor mye og når, og se kalorier, protein, fett og karbohydrater. Måltidsplanen er borte; ideer ligger ved siden av hvis du vil ha en. Trening: slik gjør du hver øvelse med hva du trenger, en øvelsesguide, og en ny plan Hele kroppen + fokusdag (for eksempel biceps og kjerne på onsdag).",
+  "notes": "Log a meal from several ingredients with amounts (150 g beef + 50 g rice) as one meal. Nutrition for 160+ base foods from Matvaretabellen 2026. 7-day chart with protein, carbs and fat per day. Supplements count per day (3 gummies, multivitamin). Saved meals and the shopping list are gone. Paste button for Watch data on Today.",
+  "notes_nb": "Logg et måltid av flere ingredienser med mengder (150 g biff + 50 g ris) som ett måltid. Næringsinnhold for 160+ basismatvarer fra Matvaretabellen 2026. 7-dagers diagram med protein, karbo og fett per dag. Kosttilskudd telles per dag (3 gummies, multivitamin). Lagrede måltider og handlelisten er borte. Lim inn-knapp for klokkedata på I dag.",
   "history": [
+    {
+      "version": "1.4.0",
+      "date": "2026-11-26",
+      "notes": "Food is now a diary: log what you ate, how much and when, and see calories, protein, fat and carbs. The meal plan is gone; ideas sit on the side if you want one. Training: how-to for every exercise with what you need, an exercise guide, and a new Full body + focus day plan (for example biceps and core on Wednesday).",
+      "notes_nb": "Maten er nå en dagbok: logg hva du spiste, hvor mye og når, og se kalorier, protein, fett og karbohydrater. Måltidsplanen er borte; ideer ligger ved siden av hvis du vil ha en. Trening: slik gjør du hver øvelse med hva du trenger, en øvelsesguide, og en ny plan Hele kroppen + fokusdag (for eksempel biceps og kjerne på onsdag)."
+    },
     {
       "version": "1.3.0",
       "date": "2026-11-26",

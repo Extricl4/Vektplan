@@ -1,25 +1,25 @@
-// Log food: build what you ate from ingredients with everyday amounts (or grams),
-// pick one of your own meals, or snap a photo / type it. Simple first, details when you want them.
-import { S, peekDay, day, mutate, activeSlots } from '../store.js';
+// Log a meal: add each ingredient and how much (grams, slices, glasses…), then log it all together.
+// Or type it ("150 g beef, 50 g rice") or snap a photo. Nothing is saved as a template: you type what you ate.
+import { S, peekDay } from '../store.js';
 import { logItems } from '../nutrition.js';
-import { bestSlotFor } from '../planner.js';
 import { RECIPES, recipeById } from '../data/recipes.js';
 import { BOOSTS } from '../data/amounts.js';
-import { tr, L, n0, kindName, shortDate } from '../i18n.js';
+import { SOURCE } from '../data/foodbase.js';
+import { tr, L, n0, shortDate } from '../i18n.js';
 import { icon, openSheet, closeSheet, toast } from '../ui.js';
 import { cheer } from '../meals.js';
 import { hasAI, estimateMeal } from '../ai.js';
 import { esc, dayKey, addDays, norm, readFileAsDataURL, shrinkImage, parseKey, nowMinutes } from '../util.js';
 import { nav } from '../nav.js';
-import { myMeals, sortedMeals, saveMyMeal, myMealSheet, whenOf } from '../mymeals.js';
 import {
-  allFoods, foodById, foodItem, recipeItem, mealItem, freeItem, restoreItem, packItem, itemKcal, itemFodmap, itemAmountText, itemMacros, macroLine,
-  amountSheet, newFoodSheet, searchFoods, mealKcal,
+  foodById, foodItem, recipeItem, freeItem, restoreItem, itemKcal, itemFodmap, itemMacros, macroLine, unitName, amountText,
+  newFoodSheet, searchFoods, foodsIn, stepAmount, snap,
 } from '../amount.js';
+import { macroBar } from './charts.js';
 
 let st = null;
 function fresh(date) {
-  return { date: date || dayKey(), time: null, q: '', cart: [], mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], saveAs: false, saveName: '' };
+  return { date: date || dayKey(), time: null, q: '', cat: null, cart: [], name: '', mode: null, photo: null, busy: false, est: null, error: '', text: '', unmatched: [], focus: null };
 }
 
 export function enter(ctx) {
@@ -28,11 +28,15 @@ export function enter(ctx) {
   // Logging for an earlier day: start at a sensible time instead of "now".
   if (st.date !== dayKey()) st.time = 12 * 60;
   if (p === 'photo') st.mode = 'photo';
+  if (p === 'type') st.mode = 'type';
 }
 
-const RANK = { low: 0, check: 1, moderate: 2, high: 3 };
-const worst = (fs) => fs.reduce((w, f) => (RANK[f] > RANK[w] ? f : w), 'low');
-const COMMON = ['egg', 'spelt-bread', 'cheese', 'butter', 'lf-milk', 'oats', 'rice', 'potatoes', 'chicken-breast', 'salmon', 'banana-firm', 'peanut-butter', 'lf-yogurt', 'rice-cakes'];
+const CATS = [
+  ['meat', () => tr('Meat & chicken', 'Kjøtt og kylling')], ['fish', () => tr('Fish', 'Fisk')], ['egg', () => tr('Eggs', 'Egg')],
+  ['dairy', () => tr('Dairy', 'Meieri')], ['grain', () => tr('Rice, pasta, bread, potatoes', 'Ris, pasta, brød, poteter')], ['veg', () => tr('Vegetables', 'Grønnsaker')],
+  ['fruit', () => tr('Fruit & berries', 'Frukt og bær')], ['nuts', () => tr('Nuts, seeds, beans', 'Nøtter, frø, bønner')], ['fat', () => tr('Oils, sauces, spreads', 'Olje, saus, pålegg')],
+  ['sweet', () => tr('Sweet & snacks', 'Søtt og snacks')], ['drink', () => tr('Drinks', 'Drikke')], ['dish', () => tr('Ready dishes', 'Ferdigretter')],
+];
 
 const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 function whenTs() {
@@ -47,57 +51,64 @@ function slotLabel() {
   return st.time == null && today ? tr('Now', 'Nå') : `${day}${hhmm(st.time ?? nowMinutes())}`;
 }
 
-function recentLogs(max = 6) {
+// Single foods you logged lately (not whole meals), for quick re-adding.
+function recentFoods(max = 12) {
   const out = [];
-  const seen = new Set(myMeals().map((m) => norm(m.name)));
-  for (let i = 0; i < 21 && out.length < max; i++) {
-    const d = peekDay(addDays(dayKey(), -i));
-    for (const l of d.logs.slice().reverse()) {
-      const k = norm(l.title);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(l);
-      if (out.length >= max) break;
+  const seen = new Set();
+  for (let i = 0; i < 30 && out.length < max; i++) {
+    for (const l of peekDay(addDays(dayKey(), -i)).logs.slice().reverse()) {
+      for (const it of l.items || []) {
+        if (!it.fid || seen.has(it.fid) || !foodById(it.fid)) continue;
+        seen.add(it.fid);
+        out.push(foodById(it.fid));
+        if (out.length >= max) break;
+      }
     }
   }
   return out;
 }
 
-const row = (act, id, title, sub, f = 'low', lead = '') => `<button class="item" data-act="${act}" data-id="${esc(id)}">
-  ${lead || `<span class="dot ${f}" aria-hidden="true"></span>`}
-  <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(title)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ''}</span>
-  ${icon('plus', 18, 'style="color:var(--accent)"')}</button>`;
+const shortName = (f) => L(f.n).replace(/\s*\(.*\)$/, '');
+const cartMac = () => {
+  const ms = st.cart.map(itemMacros).filter(Boolean);
+  return ms.length ? ms.reduce((a, x) => a.map((v, j) => v + x[j]), [0, 0, 0]) : null;
+};
+const cartKcal = () => st.cart.reduce((a, i) => a + Math.round(itemKcal(i)), 0);
+const fmtAmt = (v) => (v == null ? '' : String(Math.round(v * 100) / 100).replace('.', S().prefs.lang === 'nb' ? ',' : '.'));
 
-const heart = `<span class="plate-mini" style="width:36px;height:36px" aria-hidden="true">${icon('heart', 16)}</span>`;
-
-function foodSub(f) {
-  const it = foodItem(f);
+function foodRow(f) {
   const calm = S().prefs.calm;
-  return `${itemAmountText(it)}${calm ? '' : ` · ${n0(itemKcal(it))} kcal`}`;
+  const it = foodItem(f);
+  const m = itemMacros(it);
+  const per100 = f.custom ? '' : (() => {
+    const g = it.units.find((u) => u.u === 'g' || u.u === 'ml');
+    if (!g) return '';
+    const x = foodItem(f, 100, g.u);
+    const mm = itemMacros(x);
+    return `100 ${g.u}: ${n0(itemKcal(x))} kcal${mm ? ` · ${fmtAmt(Math.round(mm[0] * 10) / 10)} g P` : ''}`;
+  })();
+  return `<button class="item" data-act="add" data-id="${esc(f.id)}">
+    <span class="dot ${f.f || 'low'}" aria-hidden="true"></span>
+    <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(L(f.n))}</span>
+      <span class="s">${f.custom ? tr('Your own', 'Din egen') : calm ? '' : esc(per100)}${!calm && m && !per100 ? '' : ''}</span></span>
+    ${icon('plus', 20, 'style="color:var(--accent);flex:none"')}</button>`;
 }
 
 function results() {
-  const calm = S().prefs.calm;
   const q = norm(st.q.trim());
-  const mine = sortedMeals(myMeals());
-  const mealSub = (m) => [(m.items || []).length ? `${m.items.length} ${tr('ingredients', 'ingredienser')}` : tr('My meal', 'Mitt måltid'), calm || !mealKcal(m) ? '' : `${n0(mealKcal(m))} kcal`].filter(Boolean).join(' · ');
   if (!q) {
-    const rec = recentLogs(6);
-    return `<div class="row between"><p class="label">${tr('My meals', 'Mine måltider')}</p><button class="link-btn small" data-act="newMeal">${icon('plus', 14)} ${tr('New meal', 'Nytt måltid')}</button></div>
-      ${mine.length ? `<div class="list">${mine.slice(0, 6).map((m) => row('addMeal', m.id, m.name, mealSub(m), m.fodmap, heart)).join('')}</div>`
-        : `<button class="card tight link" data-act="newMeal" style="flex-direction:row;align-items:center;gap:12px;text-align:left">${heart}<span class="grow"><span style="display:block;font-weight:600">${tr('Save a meal you often eat', 'Lagre et måltid du ofte spiser')}</span>
-          <span class="small muted">${tr('Put in what is in it once. Next time it is one tap.', 'Legg inn hva som er i det én gang. Neste gang er det ett trykk.')}</span></span>${icon('chevR', 16)}</button>`}
-      ${rec.length ? `<p class="label">${tr('Recently', 'Nylig')}</p><div class="list">${rec.map((l) => row('addRecent', l.id, l.title, calm ? '' : `${n0(l.baseKcal ?? l.kcal)} kcal`, l.fodmap || 'low')).join('')}</div>` : ''}
-      <p class="label">${tr('Common foods', 'Vanlig mat')}</p>
-      <div class="chips">${COMMON.map((id) => foodById(id)).filter(Boolean).map((f) => `<button class="chip" data-act="addFood" data-id="${f.id}">${esc(L(f.n).replace(/\s*\(.*\)$/, ''))}</button>`).join('')}</div>`;
+    const rec = recentFoods();
+    return `${rec.length ? `<p class="label">${tr('Used lately', 'Brukt nylig')}</p><div class="chips">${rec.map((f) => `<button class="chip" data-act="add" data-id="${esc(f.id)}">${icon('plus', 13)} ${esc(shortName(f))}</button>`).join('')}</div>` : ''}
+      <p class="label">${tr('Browse', 'Bla gjennom')}</p>
+      <div class="chips">${CATS.map(([k, l]) => `<button class="chip solid" aria-pressed="${st.cat === k}" data-act="cat" data-v="${k}">${esc(l())}</button>`).join('')}</div>
+      ${st.cat ? `<div class="list">${foodsIn(st.cat).map(foodRow).join('')}</div>` : ''}
+      <p class="tiny muted" style="margin-top:4px">${esc(L(SOURCE))}</p>`;
   }
-  const meals = mine.filter((m) => norm(m.name).includes(q)).slice(0, 5);
-  const foods = searchFoods(st.q, 12);
-  const recipes = RECIPES.filter((r) => norm(r.name.en).includes(q) || norm(r.name.nb).includes(q)).slice(0, 5);
-  return `${meals.length ? `<p class="label">${tr('My meals', 'Mine måltider')}</p><div class="list">${meals.map((m) => row('addMeal', m.id, m.name, mealSub(m), m.fodmap, heart)).join('')}</div>` : ''}
-    ${foods.length ? `<p class="label">${tr('Foods', 'Matvarer')}</p><div class="list">${foods.map((f) => row('addFood', f.id, L(f.n), f.custom ? tr('Your own', 'Din egen') : foodSub(f), f.f)).join('')}</div>` : ''}
-    ${recipes.length ? `<p class="label">${tr('Recipes', 'Oppskrifter')}</p><div class="list">${recipes.map((r) => row('addRecipe', r.id, L(r.name), calm ? '' : `1 ${tr('portion', 'porsjon')} · ${n0(r.kcal)} kcal`)).join('')}</div>` : ''}
-    <button class="item" data-act="newFood" style="border:1px dashed var(--line);border-radius:16px;margin-top:6px">${icon('plus', 18)}<span class="grow">${tr('Add', 'Legg til')} <b>«${esc(st.q.trim())}»</b> ${tr('as something new', 'som noe nytt')}</span></button>`;
+  const foods = searchFoods(st.q, 16);
+  const recipes = RECIPES.filter((r) => norm(r.name.en).includes(q) || norm(r.name.nb).includes(q)).slice(0, 4);
+  return `${foods.length ? `<div class="list">${foods.map(foodRow).join('')}</div>` : ''}
+    ${recipes.length ? `<p class="label">${tr('Recipes', 'Oppskrifter')}</p><div class="list">${recipes.map((r) => `<button class="item" data-act="addRecipe" data-id="${r.id}"><span class="grow"><span class="t" style="display:block;font-weight:500">${esc(L(r.name))}</span><span class="s">${tr('1 portion', '1 porsjon')}${S().prefs.calm ? '' : ` · ${n0(r.kcal)} kcal`}</span></span>${icon('plus', 20, 'style="color:var(--accent)"')}</button>`).join('')}</div>` : ''}
+    <button class="item" data-act="newFood" style="border:1px dashed var(--line);border-radius:16px;margin-top:6px">${icon('plus', 18)}<span class="grow">${tr('Not here? Add', 'Finner du det ikke? Legg til')} <b>«${esc(st.q.trim())}»</b></span></button>`;
 }
 
 function photoCard() {
@@ -105,7 +116,7 @@ function photoCard() {
     <input id="lib" class="sr-only" type="file" accept="image/*" data-change="photo">`;
   if (!hasAI()) {
     return `<section class="card soft"><div class="row between"><h2 class="h3">${tr('Photo', 'Bilde')}</h2><button class="icon-btn" data-act="mode" data-mode="" aria-label="${tr('Close', 'Lukk')}">${icon('x', 18)}</button></div>
-      <p class="small soft" style="line-height:1.5">${tr('Photo guesses need an AI key (Settings → AI). Until then, search for the foods above, it only takes a few taps.', 'Bildegjetting trenger en AI-nøkkel (Innstillinger → AI). Fram til da kan du søke opp maten over, det tar bare noen trykk.')}</p>
+      <p class="small soft" style="line-height:1.5">${tr('Photo guesses need an AI key (Settings → AI). Until then, search for the foods below, it only takes a few taps.', 'Bildegjetting trenger en AI-nøkkel (Innstillinger → AI). Fram til da kan du søke opp maten under, det tar bare noen trykk.')}</p>
       <a class="btn secondary small" href="#/settings/ai">${tr('Set up AI', 'Sett opp AI')}</a></section>`;
   }
   if (!st.photo) {
@@ -125,65 +136,105 @@ function typeCard() {
   const ai = hasAI();
   return `<section class="card"><div class="row between"><h2 class="h3">${tr('Type it', 'Skriv det')}</h2><button class="icon-btn" data-act="mode" data-mode="" aria-label="${tr('Close', 'Lukk')}">${icon('x', 18)}</button></div>
     <label class="sr-only" for="meal-text">${tr('What did you eat?', 'Hva spiste du?')}</label>
-    <textarea id="meal-text" class="textarea" rows="3" data-input="text" placeholder="${tr('e.g. 2 slices of bread with cheese, 1 glass of lactose-free milk', 'f.eks. 2 skiver brød med ost, 1 glass laktosefri melk')}">${esc(st.text)}</textarea>
+    <textarea id="meal-text" class="textarea" rows="3" data-input="text" placeholder="${tr('e.g. 150 g beef, 50 g rice, 1 glass of lactose-free milk', 'f.eks. 150 g biff, 50 g ris, 1 glass laktosefri melk')}">${esc(st.text)}</textarea>
     <button class="btn ${ai ? 'primary' : 'secondary'}" data-act="estimate" ${st.busy ? 'disabled' : ''}>${icon(ai ? 'sparkle' : 'search', 18)} ${st.busy ? tr('Thinking…', 'Tenker…') : ai ? tr('Estimate with AI', 'Estimer med AI') : tr('Find these foods', 'Finn disse matvarene')}</button>
+    <p class="tiny muted">${tr('Write grams or everyday amounts. Each part ends up as its own ingredient that you can adjust.', 'Skriv gram eller vanlige mengder. Hver del blir en egen ingrediens du kan justere.')}</p>
     ${st.error ? `<div class="note amber">${icon('info', 18)}<span>${esc(st.error)}</span></div>` : ''}</section>`;
 }
 
-function cartMac() {
-  const ms = st.cart.map(itemMacros).filter(Boolean);
-  return ms.length ? ms.reduce((a, x) => a.map((v, j) => v + x[j]), [0, 0, 0]) : null;
+// One ingredient: name, amount you can type, unit, and what it gives.
+function ingRow(it, i) {
+  const calm = S().prefs.calm;
+  const m = itemMacros(it);
+  const f = itemFodmap(it);
+  const pair = it.pair && foodById(it.pair);
+  const isRaw = /-raw$/.test(it.fid || '');
+  const units = it.units || [];
+  return `<div class="ing" data-k="${it.k}">
+    <div class="ing-top"><span class="dot ${f}" id="dot-${it.k}" aria-hidden="true"></span>
+      <span class="ing-name">${esc(it.name)}</span>
+      <button class="icon-btn" style="width:34px;height:34px;flex:none" data-act="rm" data-k="${it.k}" aria-label="${tr('Remove', 'Fjern')} ${esc(it.name)}">${icon('x', 16)}</button></div>
+    <div class="ing-bot">
+      <button class="ing-step" data-act="dec" data-k="${it.k}" aria-label="${tr('Less', 'Mindre')}">−</button>
+      <input class="ing-amt num" id="amt-${it.k}" type="text" inputmode="decimal" autocomplete="off" value="${fmtAmt(it.amount)}" data-input="amt" data-change="amtDone" data-k="${it.k}" aria-label="${tr('Amount of', 'Mengde')} ${esc(it.name)}">
+      ${units.length > 1 ? `<select class="ing-unit" data-change="unit" data-k="${it.k}" aria-label="${tr('Unit', 'Enhet')}">${units.map((u) => `<option value="${u.u}" ${u.u === it.unit ? 'selected' : ''}>${esc(unitName(u.u, it.amount))}</option>`).join('')}</select>`
+        : `<span class="ing-unit fixed">${esc(it.portionText || unitName(it.unit, it.amount))}</span>`}
+      <button class="ing-step" data-act="inc" data-k="${it.k}" aria-label="${tr('More', 'Mer')}">+</button>
+      ${calm ? '' : `<span class="ing-out num" id="out-${it.k}">${n0(itemKcal(it))} kcal${m ? `<br><b>${Math.round(m[0])} g P</b>` : ''}</span>`}
+    </div>
+    ${pair ? `<button class="chip tiny-chip" data-act="twin" data-k="${it.k}">${icon('swap', 13)} ${isRaw ? tr('Weighed cooked? Switch', 'Veid kokt/stekt? Bytt') : tr('Weighed raw/dry? Switch', 'Veid rå/tørr? Bytt')}</button>` : ''}
+    <div id="note-${it.k}">${noteHTML(it, f)}</div>
+  </div>`;
 }
 
-function cartCard() {
+function noteHTML(it, f = itemFodmap(it)) {
+  if (f !== it.fodmap && it.lowMax) return `<p class="tiny" style="color:var(--amber)">${tr(`Low FODMAP up to about ${it.lowMax} g.`, `Lav-FODMAP opp til ca. ${it.lowMax} g.`)}</p>`;
+  if (f !== 'low' && it.why) return `<p class="tiny" style="color:var(--amber)">${esc(it.why)}</p>`;
+  return '';
+}
+
+function mealCard() {
   const calm = S().prefs.calm;
-  if (!st.cart.length && !st.unmatched.length) return '';
-  const total = st.cart.reduce((a, i) => a + itemKcal(i), 0);
-  const inCart = new Set(st.cart.map((i) => i.fid).filter(Boolean));
-  const boosts = BOOSTS.filter((b) => !inCart.has(b.id) && foodById(b.id)).slice(0, 4);
-  return `<section class="card" aria-label="${tr('Your meal', 'Måltidet ditt')}">
-    <div class="row between"><h2 class="h3">${st.est?.title ? esc(st.est.title) : tr('Your meal', 'Måltidet ditt')}</h2>
-      ${calm ? '' : `<span class="num" style="font-size:20px;font-weight:700">≈ ${n0(total)} kcal</span>`}</div>
-    ${!calm && cartMac() ? `<p class="small soft num" style="margin-top:-6px">${esc(macroLine(cartMac()))}</p>` : ''}
-    ${st.est?.question ? `<div class="note amber">${icon('info', 18)}<span>${esc(st.est.question)}</span></div>` : ''}
-    ${st.cart.length ? `<div class="list">${st.cart.map((it) => {
-      const f = itemFodmap(it);
-      return `<button class="item" data-act="editItem" data-k="${it.k}" style="align-items:flex-start">
-      <span class="dot ${f}" style="margin-top:7px" aria-hidden="true"></span>
-      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(it.name)}</span>
-        <span class="s">${esc(it.portionText || itemAmountText(it))}${calm ? '' : ` · ${n0(itemKcal(it))} kcal${itemMacros(it) ? ` · ${esc(macroLine(itemMacros(it), true))}` : ''}`}</span>
-        ${f !== 'low' && it.why ? `<span class="s" style="display:block;color:var(--amber)">${esc(it.why)}</span>` : ''}</span>
-      <span class="small" style="color:var(--accent);font-weight:600;white-space:nowrap">${tr('Change', 'Endre')}</span></button>`;
-    }).join('')}</div>` : ''}
+  const has = st.cart.length > 0;
+  const total = cartKcal();
+  const mac = cartMac();
+  return `<section class="card meal" aria-label="${tr('Your meal', 'Måltidet ditt')}">
+    <div class="row between"><h2 class="h3">${st.est?.title && !st.name ? esc(st.est.title) : tr('Your meal', 'Måltidet ditt')}</h2>
+      <span class="small muted">${st.cart.length} ${st.cart.length === 1 ? tr('ingredient', 'ingrediens') : tr('ingredients', 'ingredienser')}</span></div>
+    ${has ? `<div class="ings">${st.cart.map(ingRow).join('')}</div>`
+      : `<p class="small soft" style="line-height:1.5">${tr('Search below and tap each thing you ate. Then type how much: 150 g, 2 slices, 1 glass…', 'Søk under og trykk på hver ting du spiste. Skriv så hvor mye: 150 g, 2 skiver, 1 glass…')}</p>`}
     ${st.unmatched.length ? `<div class="note amber">${icon('info', 18)}<div class="grow col" style="gap:6px"><span>${tr('Not found:', 'Fant ikke:')} ${st.unmatched.map((u) => `<b>${esc(u)}</b>`).join(', ')}</span>
       <div class="row wrap" style="gap:6px">${st.unmatched.map((u, i) => `<button class="btn tiny secondary" data-act="newFoodFor" data-i="${i}">${tr('Add', 'Legg til')} «${esc(u)}»</button>`).join('')}</div></div></div>` : ''}
-    ${boosts.length && st.cart.length ? `<div class="boosts"><p class="small soft" style="line-height:1.4">${tr('Get full fast? A little of these adds energy without much more food:', 'Blir du fort mett? Litt av dette gir mer energi uten mye mer mat:')}</p>
-      <div class="chips">${boosts.map((b) => `<button class="chip" data-act="boost" data-id="${b.id}">${icon('plus', 13)} ${esc(L(foodById(b.id).n).replace(/\s*\(.*\)$/, ''))}</button>`).join('')}</div></div>` : ''}
-    ${st.cart.length ? `<label class="row" style="gap:10px;cursor:pointer;margin-top:2px"><span class="switch"><input type="checkbox" ${st.saveAs ? 'checked' : ''} data-change="saveAs"><span></span></span>
-      <span class="small">${tr('Also save it to My meals', 'Lagre det også i Mine måltider')}</span></label>
-      ${st.saveAs ? `<input id="save-name" class="input" type="text" maxlength="80" autocomplete="off" data-input="saveName" value="${esc(st.saveName)}" placeholder="${tr('Name, e.g. My usual breakfast', 'Navn, f.eks. Vanlig frokost')}">` : ''}` : ''}
+    ${has && !calm ? `<div class="meal-total" id="meal-total">${totalHTML(total, mac)}</div>` : ''}
+    ${has ? `<input id="meal-name" class="input" type="text" maxlength="60" autocomplete="off" data-input="name" value="${esc(st.name)}" placeholder="${tr('Name it (optional), e.g. Beef and rice', 'Gi det et navn (valgfritt), f.eks. Biff og ris')}">
+      <button class="btn primary" data-act="save" style="min-height:56px;font-size:16px">${icon('check', 18)} ${tr('Log this meal', 'Logg måltidet')}</button>` : ''}
+    ${has ? boostsHTML() : ''}
   </section>`;
+}
+
+function totalHTML(total, mac) {
+  return `<div class="row between" style="align-items:baseline"><span class="small muted">${tr('Total', 'Totalt')}</span><span class="num" style="font-size:22px;font-weight:700">${n0(total)} kcal</span></div>
+    ${mac ? `${macroBar(mac)}<p class="small soft num">${esc(macroLine(mac))}</p>` : ''}`;
+}
+
+function boostsHTML() {
+  const inCart = new Set(st.cart.map((i) => i.fid).filter(Boolean));
+  const boosts = BOOSTS.filter((b) => !inCart.has(b.id) && foodById(b.id)).slice(0, 4);
+  if (!boosts.length) return '';
+  return `<div class="boosts"><p class="tiny soft" style="line-height:1.4">${tr('Get full fast? A little of these adds energy without much more food:', 'Blir du fort mett? Litt av dette gir mer energi uten mye mer mat:')}</p>
+    <div class="chips">${boosts.map((b) => `<button class="chip" data-act="boost" data-id="${b.id}">${icon('plus', 13)} ${esc(shortName(foodById(b.id)))}</button>`).join('')}</div></div>`;
 }
 
 export function render() {
   if (!st) st = fresh();
-  const calm = S().prefs.calm;
-  const total = st.cart.reduce((a, i) => a + itemKcal(i), 0);
   return `<div class="screen no-tabs">
     <header class="head">
       <button class="icon-btn surface" data-act="close" aria-label="${tr('Close', 'Lukk')}">${icon('x', 20)}</button>
-      <h1 class="h2 grow">${tr('Log food', 'Logg mat')}</h1>
+      <h1 class="h2 grow">${tr('Log a meal', 'Logg et måltid')}</h1>
       <button class="chip on" data-act="slot">${icon('clock', 15)} ${esc(slotLabel())}</button>
     </header>
-    ${cartCard()}
-    ${st.cart.length ? `<button class="btn primary block" data-act="save" style="min-height:56px;font-size:16px">${icon('check', 18)} ${tr('Save', 'Lagre')}${calm ? '' : ` · ≈ ${n0(total)} kcal`}</button>` : ''}
+    ${mealCard()}
     ${st.mode === 'photo' ? photoCard() : st.mode === 'type' ? typeCard() : ''}
     <div class="search">${icon('search', 18)}<label class="sr-only" for="log-q">${tr('Search', 'Søk')}</label>
-      <input id="log-q" class="input" type="search" autocomplete="off" placeholder="${st.cart.length ? tr('Add more: bread, egg, milk…', 'Legg til mer: brød, egg, melk…') : tr('What did you eat? Search food or your meals', 'Hva spiste du? Søk mat eller måltidene dine')}" value="${esc(st.q)}" data-input="q"></div>
-    ${st.mode ? '' : `<div class="row" style="gap:8px"><button class="btn small secondary" data-act="mode" data-mode="photo" style="flex:1">${icon('camera', 16)} ${tr('Photo', 'Bilde')}</button>
-      <button class="btn small secondary" data-act="mode" data-mode="type" style="flex:1">${icon('pencil', 16)} ${tr('Type it', 'Skriv det')}</button></div>`}
+      <input id="log-q" class="input" type="search" autocomplete="off" placeholder="${st.cart.length ? tr('Add more: rice, egg, milk…', 'Legg til mer: ris, egg, melk…') : tr('Search: beef, rice, egg, milk…', 'Søk: biff, ris, egg, melk…')}" value="${esc(st.q)}" data-input="q"></div>
+    ${st.mode ? '' : `<div class="row" style="gap:8px"><button class="btn small secondary" data-act="mode" data-mode="type" style="flex:1">${icon('pencil', 16)} ${tr('Type it all', 'Skriv alt')}</button>
+      <button class="btn small secondary" data-act="mode" data-mode="photo" style="flex:1">${icon('camera', 16)} ${tr('Photo', 'Bilde')}</button></div>`}
     <div id="log-results" class="col" style="gap:8px">${results()}</div>
   </div>`;
+}
+
+export function mount() {
+  if (st?.focus) {
+    const k = st.focus;
+    st.focus = null;
+    setTimeout(() => {
+      const el = document.getElementById(`amt-${k}`);
+      if (!el) return;
+      el.closest('.ing')?.scrollIntoView({ block: 'center' });
+      el.focus();
+      el.select();
+    }, 60);
+  }
 }
 
 function refreshResults() {
@@ -191,18 +242,33 @@ function refreshResults() {
   if (box) box.innerHTML = results();
 }
 
-function addItem(it, msg = true) {
+const find = (k) => st.cart.find((x) => x.k === k);
+
+function addItem(it, focus = true) {
   st.cart.push(it);
   st.q = '';
-  if (msg) toast(tr('Added', 'Lagt til'), 1000);
+  if (focus) st.focus = it.k;
   nav.rerender();
+  mount();
 }
 
-function askAmount(it, opts = {}) {
-  amountSheet({ item: it, add: tr('Add to meal', 'Legg til i måltidet'), onDone: (x) => addItem(x), ...opts });
+// Update one row's numbers and the total without re-drawing (keeps the keyboard open).
+function refreshNumbers(it) {
+  const out = document.getElementById(`out-${it.k}`);
+  const m = itemMacros(it);
+  if (out) out.innerHTML = `${n0(itemKcal(it))} kcal${m ? `<br><b>${Math.round(m[0])} g P</b>` : ''}`;
+  const tot = document.getElementById('meal-total');
+  if (tot) tot.innerHTML = totalHTML(cartKcal(), cartMac());
+  // Small things that depend on the amount, changed in place so a tap on another button still lands.
+  const f = itemFodmap(it);
+  const dot = document.getElementById(`dot-${it.k}`);
+  if (dot) dot.className = `dot ${f}`;
+  const note = document.getElementById(`note-${it.k}`);
+  if (note) note.innerHTML = noteHTML(it, f);
+  const sel = document.querySelector(`select[data-k="${it.k}"]`);
+  if (sel) [...sel.options].forEach((o) => { o.textContent = unitName(o.value, it.amount); });
 }
 
-// ---------- Typing without AI: "2 slices bread, 1 glass milk" ----------
 const UNIT_WORDS = {
   slice: 'slice', slices: 'slice', skive: 'slice', skiver: 'slice', glass: 'glass', glasses: 'glass', dl: 'dl', g: 'g', gram: 'g', grams: 'g', gr: 'g',
   ml: 'ml', ss: 'tbsp', tbsp: 'tbsp', spiseskje: 'tbsp', spiseskjeer: 'tbsp', ts: 'tsp', tsp: 'tsp', teskje: 'tsp', stk: 'piece', piece: 'piece', pieces: 'piece',
@@ -219,7 +285,16 @@ const ALIAS = {
   salmon: 'salmon', laks: 'salmon', pasta: 'pasta', chips: 'chips', potetgull: 'chips', chocolate: 'dark-choc', sjokolade: 'dark-choc',
   juice: 'oj', oatmeal: 'porridge', porridge: 'porridge', havregrot: 'porridge', grot: 'porridge', peanuts: 'peanuts', peanotter: 'peanuts',
   tuna: 'tuna', tunfisk: 'tuna', apple: 'apple', eple: 'apple', orange: 'orange', appelsin: 'orange', havregryn: 'oats', oats: 'oats',
+  beef: 'beef-raw', biff: 'beef-raw', storfe: 'beef-raw', storfekjott: 'beef-raw', kjottdeig: 'mince-raw', mince: 'mince-raw', karbonadedeig: 'mince-lean-raw',
+  steak: 'steak-raw', entrecote: 'steak-raw', svin: 'pork-tenderloin-raw', pork: 'pork-tenderloin-raw', svinefilet: 'pork-tenderloin-raw',
+  kalkun: 'turkey-breast-raw', turkey: 'turkey-breast-raw', torsk: 'cod-raw', cod: 'cod-raw', sei: 'saithe-raw', orret: 'trout-raw',
+  kyllingfilet: 'chicken-breast-raw', kyllinglar: 'chicken-thigh-raw', basmati: 'basmati-raw', jasmin: 'jasmine-raw', jasmine: 'jasmine-raw',
+  quinoa: 'quinoa', skyr: 'skyr', kvarg: 'quark', fløte: 'cream', flote: 'cream', cream: 'cream', olje: 'oil', oil: 'oil', mais: 'corn', corn: 'corn',
+  nudler: 'rice-noodles', noodles: 'rice-noodles', sotpotet: 'sweet-potato', lompe: 'lompe', pommes: 'french-fries', fries: 'french-fries',
 };
+// Cooked foods with a dry/raw twin: a small gram amount usually means it was weighed dry.
+const DRY_TWIN = { rice: 'rice-raw', pasta: 'pasta-raw', 'gf-pasta': 'gf-pasta-raw', basmati: 'basmati-raw', jasmine: 'jasmine-raw', quinoa: 'quinoa-raw', 'rice-noodles': 'rice-noodles-raw' };
+const RAW_FIRST = { 'chicken-breast': 'chicken-breast-raw', 'chicken-thigh': 'chicken-thigh-raw', mince: 'mince-raw', salmon: 'salmon-raw', cod: 'cod-raw', potatoes: 'potatoes-raw' };
 const NUM = { half: 0.5, halv: 0.5, halvt: 0.5, one: 1, en: 1, ett: 1, ei: 1, two: 2, to: 2, three: 3, tre: 3, four: 4, fire: 4 };
 
 function parseAmount(raw) {
@@ -252,6 +327,11 @@ function localParse(text) {
     if (!f) f = searchFoods(phrase, 1)[0] || null;
     if (!f && words.length > 1) for (const w of words) { f = (ALIAS[w] && foodById(ALIAS[w])) || (w.length >= 4 ? searchFoods(w, 1)[0] : null); if (f) break; }
     const r = !f ? RECIPES.find((x) => [x.name.en, x.name.nb].some((n) => norm(n).includes(phrase))) : null;
+    if (f && unit === 'g' && qty != null) {
+      // "50 g rice" is almost always dry rice; "150 g chicken" is usually weighed raw before cooking.
+      const twin = (qty <= 100 && DRY_TWIN[f.id]) || RAW_FIRST[f.id];
+      if (twin && foodById(twin)) f = foodById(twin);
+    }
     if (f) {
       const it = foodItem(f);
       if (unit && it.units.some((u) => u.u === unit)) { it.unit = unit; it.amount = qty ?? 1; }
@@ -279,7 +359,7 @@ async function runEstimate() {
   try {
     const res = await estimateMeal({ image: st.mode === 'photo' ? st.photo : null, text: st.mode === 'type' ? st.text : '' });
     st.est = res;
-    st.cart = res.items.map((x) => freeItem(x.name, x.kcal, { m: x.m, portionText: x.portion, fodmap: x.fodmap || 'low', why: x.reason || '', tags: x.tags || [] }));
+    st.cart = [...st.cart.filter((x) => !x.ai), ...res.items.map((x) => freeItem(x.name, x.kcal, { ai: true, m: x.m, portionText: x.portion, fodmap: x.fodmap || 'low', why: x.reason || '', tags: x.tags || [] }))];
     if (!res.items.length) st.error = tr('I could not see any food. Try another photo or type it instead.', 'Jeg så ingen mat. Prøv et nytt bilde eller skriv det inn.');
   } catch (e) {
     st.error = e.message || String(e);
@@ -319,97 +399,68 @@ function whenSheet() {
   });
 }
 
+
 export const actions = {
   close: () => { st = null; nav.back('today'); },
-  mode: (el) => { st.mode = el.dataset.mode || null; st.error = ''; nav.rerender(); },
+  mode: (el) => { st.mode = el.dataset.mode || null; st.error = ''; nav.rerender(); if (st.mode === 'type') setTimeout(() => document.getElementById('meal-text')?.focus(), 80); },
   slot: () => whenSheet(),
-  oldSlot: () => {
-    const slots = activeSlots();
-    openSheet({
-      title: tr('Which meal is this?', 'Hvilket måltid er dette?'),
-      html: `<div class="col">${slots.map((s) => `<button class="choice" aria-pressed="${s.id === st.slot}" data-act="pick" data-id="${s.id}">${icon('clock', 18)}<span class="grow">${kindName(s.kind)}</span><span class="muted small">${s.time}</span></button>`).join('')}
-        <button class="choice" aria-pressed="${!st.slot}" data-act="pick" data-id="">${icon('plus', 18)}<span class="grow">${tr('Extra (no meal time)', 'Ekstra (uten måltid)')}</span></button></div>`,
-      actions: { pick: (b) => { st.slot = b.dataset.id || null; closeSheet(); nav.rerender(); } },
-    });
-  },
   q: (el) => { st.q = el.value; refreshResults(); },
-  addFood: (el) => {
-    const f = foodById(el.dataset.id);
-    if (f) askAmount(foodItem(f));
+  cat: (el) => { st.cat = st.cat === el.dataset.v ? null : el.dataset.v; refreshResults(); },
+  add: (el) => { const f = foodById(el.dataset.id); if (f) addItem(foodItem(f)); },
+  addRecipe: (el) => { const r = recipeById(el.dataset.id); if (r) addItem(recipeItem(r)); },
+  newFood: () => newFoodSheet(st.q.trim(), (food) => addItem(foodItem(food))),
+  newFoodFor: (el) => {
+    const i = Number(el.dataset.i);
+    newFoodSheet(st.unmatched[i] || '', (food) => { st.unmatched = st.unmatched.filter((_, j) => j !== i); addItem(foodItem(food)); });
   },
-  addRecipe: (el) => {
-    const r = recipeById(el.dataset.id);
-    if (r) askAmount(recipeItem(r));
+  amt: (el) => {
+    const it = find(el.dataset.k);
+    if (!it) return;
+    const v = parseFloat(String(el.value).replace(',', '.'));
+    if (v >= 0 && v < 100000) { it.amount = v; refreshNumbers(it); }
   },
-  addMeal: (el) => {
-    const m = myMeals().find((x) => x.id === el.dataset.id);
-    if (!m) return;
-    const hasItems = (m.items || []).length > 0;
-    amountSheet({
-      item: mealItem(m),
-      title: tr('How much did you eat?', 'Hvor mye spiste du?'),
-      add: tr('Add to meal', 'Legg til i måltidet'),
-      onDone: (x) => addItem(x),
-      extraHTML: hasItems ? `<button class="btn secondary" data-act="expand">${icon('list', 18)} ${tr('Change what is in it this time', 'Endre innholdet denne gangen')}</button>` : '',
-      extraActions: {
-        expand: () => {
-          closeSheet(true);
-          for (const i of m.items) st.cart.push(restoreItem(i));
-          st.q = '';
-          toast(tr('Change any amount below.', 'Endre en mengde under.'), 1800);
-          nav.rerender();
-        },
-      },
-    });
+  amtDone: (el) => {
+    const it = find(el.dataset.k);
+    if (!it) return;
+    const v = parseFloat(String(el.value).replace(',', '.'));
+    if (!(v >= 0)) el.value = fmtAmt(it.amount);
+    refreshNumbers(it);
   },
-  addRecent: (el) => {
-    let l = null;
-    for (let i = 0; i < 21 && !l; i++) l = peekDay(addDays(dayKey(), -i)).logs.find((x) => x.id === el.dataset.id);
-    if (!l) return;
-    askAmount(freeItem(l.title, l.baseKcal ?? l.kcal, { fodmap: l.fodmap || 'low', tags: l.tags || [], rid: l.rid || null, myId: l.myId || null }));
+  dec: (el) => { const it = find(el.dataset.k); if (it) { it.amount = Math.max(0, stepAmount(it.amount, it.unit, -1)); nav.rerender(); } },
+  inc: (el) => { const it = find(el.dataset.k); if (it) { it.amount = stepAmount(it.amount, it.unit, 1); nav.rerender(); } },
+  unit: (el) => {
+    const it = find(el.dataset.k);
+    if (!it) return;
+    const from = it.units.find((u) => u.u === it.unit) || it.units[0];
+    const to = it.units.find((u) => u.u === el.value);
+    if (!to) return;
+    it.amount = from.g && to.g ? snap((from.g * it.amount) / to.g, to.u) : to.u === 'g' || to.u === 'ml' ? 100 : 1;
+    it.unit = to.u;
+    nav.rerender();
   },
-  editItem: (el) => {
-    const i = st.cart.findIndex((c) => c.k === el.dataset.k);
-    if (i < 0) return;
-    amountSheet({
-      item: st.cart[i],
-      add: tr('Done', 'Ferdig'),
-      onDone: (x) => { st.cart[i] = x; nav.rerender(); },
-      onRemove: () => { st.cart.splice(i, 1); nav.rerender(); },
-    });
+  twin: (el) => {
+    const i = st.cart.findIndex((x) => x.k === el.dataset.k);
+    const it = st.cart[i];
+    const f = it && foodById(it.pair);
+    if (!f) return;
+    const unit = it.unit === 'g' || it.unit === 'ml' ? it.unit : undefined;
+    st.cart[i] = { ...foodItem(f, unit ? it.amount : undefined, unit), k: it.k };
+    toast(tr(`Switched to ${L(f.n).toLowerCase()}.`, `Byttet til ${L(f.n).toLowerCase()}.`), 1600);
+    nav.rerender();
   },
+  rm: (el) => { st.cart = st.cart.filter((x) => x.k !== el.dataset.k); nav.rerender(); },
   boost: (el) => {
     const b = BOOSTS.find((x) => x.id === el.dataset.id);
     const f = foodById(b?.id);
-    if (!f) return;
-    const it = foodItem(f, b.amount, b.unit);
-    it.why = L(b.why);
-    askAmount(it);
+    if (f) addItem(foodItem(f, b.amount, b.unit), false);
   },
-  newFood: () => newFoodSheet(st.q.trim(), (food) => askAmount(foodItem(food))),
-  newFoodFor: (el) => {
-    const i = Number(el.dataset.i);
-    const name = st.unmatched[i] || '';
-    newFoodSheet(name, (food) => {
-      st.unmatched = st.unmatched.filter((_, j) => j !== i);
-      askAmount(foodItem(food));
-    });
-  },
-  newMeal: () => { const items = st.cart.map(packItem); myMealSheet(null, { prefill: { name: '', items, when: null } }); },
-  saveAs: (el) => {
-    st.saveAs = el.checked;
-    if (st.saveAs && !st.saveName) st.saveName = st.est?.title || (st.cart.length === 1 ? st.cart[0].name : '');
-    nav.rerender();
-    if (st.saveAs) setTimeout(() => document.getElementById('save-name')?.focus(), 50);
-  },
-  saveName: (el) => { st.saveName = el.value; },
+  name: (el) => { st.name = el.value; },
   photo: async (el) => {
     const file = el.files && el.files[0];
     if (!file) return;
     try {
       const raw = await readFileAsDataURL(file);
       st.photo = await shrinkImage(raw);
-      st.cart = [];
       st.est = null;
       runEstimate();
     } catch (e) {
@@ -432,27 +483,16 @@ export const actions = {
     nav.rerender();
   },
   save: () => {
-    if (!st.cart.length) return;
+    const items = st.cart.filter((x) => (x.amount || 0) > 0);
+    if (!items.length) { toast(tr('Add an amount first.', 'Legg inn en mengde først.')); return; }
     const key = st.date;
-    const title = st.est?.title || (st.saveAs && st.saveName.trim()) || '';
-    const single = st.cart.length === 1 ? st.cart[0] : null;
-    const log = logItems(key, st.cart, { title, ts: whenTs(), source: st.mode || 'search', myId: single?.myId || null, rid: single?.rid || null });
-    if (st.saveAs && log) {
-      const items = st.cart.map(packItem);
-      const fod = log.fodmap;
-      const name = st.saveName.trim() || log.title;
-      const myId = saveMyMeal({ name, items, kcal: log.baseKcal, when: ['breakfast', 'lunch', 'dinner', 'snack'], fodmap: fod === 'high' ? 'moderate' : fod, note: '' });
-      mutate(() => { const l = day(key).logs.find((x) => x.id === log.id); if (l) l.myId = myId; });
-    }
-    const usedMine = st.cart.filter((c) => c.myId).map((c) => c.myId);
-    if (usedMine.length) mutate((s) => { for (const m of s.myMeals) if (usedMine.includes(m.id)) { m.used = (m.used || 0) + 1; m.last = Date.now(); } });
+    const title = st.name.trim() || st.est?.title || '';
+    const log = logItems(key, items, { title, ts: whenTs(), source: st.mode || 'search' });
     const flagged = (log?.items || []).filter((i) => i.fodmap === 'high');
-    const saved = st.saveAs;
     const past = key !== dayKey();
     st = null;
     const names = flagged.map((i) => i.name).join(', ');
-    toast(flagged.length ? tr(`Logged. Heads up: ${names} ${flagged.length > 1 ? 'are' : 'is'} high FODMAP.`, `Logget. Obs: ${names} har mye FODMAP.`)
-      : saved ? tr('Logged, and saved to My meals.', 'Logget, og lagret i Mine måltider.') : cheer(key), 3200);
+    toast(flagged.length ? tr(`Logged. Heads up: ${names} ${flagged.length > 1 ? 'are' : 'is'} high FODMAP.`, `Logget. Obs: ${names} har mye FODMAP.`) : cheer(key), 3200);
     nav.go(past ? `food/diary/${key}` : 'today');
   },
 };

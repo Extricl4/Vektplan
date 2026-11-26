@@ -52,6 +52,22 @@ export const PRESETS = {
   },
 };
 export const PRESET_ORDER = ['creatine-gummy', 'creatine', 'protein', 'vitd', 'tran', 'omega3', 'multi'];
+// How many a day and of what, unless you change it.
+export const PER_DAY = {
+  'creatine-gummy': { n: 3, unit: 'gummy', each: '1 g' }, creatine: { n: 1, unit: 'tsp', each: '3–5 g' }, protein: { n: 1, unit: 'scoop', each: '' },
+  vitd: { n: 1, unit: 'tablet', each: '' }, tran: { n: 1, unit: 'tsp', each: '' }, omega3: { n: 2, unit: 'capsule', each: '' }, multi: { n: 1, unit: 'tablet', each: '' },
+  custom: { n: 1, unit: 'pill', each: '' },
+};
+export const SUPP_UNITS = {
+  gummy: [() => tr('gummy', 'gummy'), () => tr('gummies', 'gummies')], tablet: [() => tr('tablet', 'tablett'), () => tr('tablets', 'tabletter')],
+  capsule: [() => tr('capsule', 'kapsel'), () => tr('capsules', 'kapsler')], pill: [() => tr('pill', 'pille'), () => tr('pills', 'piller')],
+  scoop: [() => tr('scoop', 'skje'), () => tr('scoops', 'skjeer')], tsp: [() => tr('tsp', 'ts'), () => tr('tsp', 'ts')],
+  drops: [() => tr('dose of drops', 'dose dråper'), () => tr('doses of drops', 'doser dråper')], portion: [() => tr('portion', 'porsjon'), () => tr('portions', 'porsjoner')],
+};
+export const perDay = (x) => Math.max(1, Math.min(20, Number(x.n) || PER_DAY[x.kind]?.n || 1));
+export const suppUnit = (x) => (SUPP_UNITS[x.unit] ? x.unit : PER_DAY[x.kind]?.unit || 'pill');
+export const suppEach = (x) => (x.each != null ? String(x.each) : PER_DAY[x.kind]?.each || '');
+export const unitWord = (u, n) => SUPP_UNITS[u]?.[n === 1 ? 0 : 1]() || '';
 export const DEFAULT_SUPPS = () => [
   { id: 'creatine-gummy', kind: 'creatine-gummy' },
   { id: 'protein', kind: 'protein', mix: 'water' },
@@ -60,16 +76,33 @@ export const DEFAULT_SUPPS = () => [
 
 export const suppList = () => (Array.isArray(S().supps?.list) ? S().supps.list : []);
 export const suppName = (x) => (x.name && x.name.trim()) || PRESETS[x.kind]?.name() || tr('Supplement', 'Tilskudd');
-export const suppDose = (x) => (x.dose != null && String(x.dose).trim() ? String(x.dose).trim() : PRESETS[x.kind]?.dose() || '');
+// "3 gummies · 1 g each" (or your own dose text for older custom ones).
+export function suppDose(x) {
+  const n = perDay(x);
+  const u = suppUnit(x);
+  const each = suppEach(x);
+  const base = `${n} ${unitWord(u, n)}`;
+  if (x.kind === 'custom' && x.dose && !x.n) return String(x.dose);
+  return each ? `${base} · ${each} ${tr('each', 'hver')}` : base;
+}
 export const hasSupp = (kind) => suppList().some((x) => x.kind === kind);
 
 export const ticks = (key = dayKey()) => peekDay(key).supps || {};
+// What you took on a given day: something you added later doesn't make older days look unfinished.
+export const listOn = (key = dayKey()) => suppList().filter((x) => !x.since || x.since <= key);
+// How many taken today. Older days only stored "done".
+export function countOf(id, key = dayKey()) {
+  const d = peekDay(key);
+  const x = suppList().find((s) => s.id === id);
+  if (d.suppN && d.suppN[id] != null) return d.suppN[id];
+  return d.supps?.[id] ? (x ? perDay(x) : 1) : 0;
+}
 export const isTicked = (id, key = dayKey()) => !!ticks(key)[id];
 export function doneCount(key = dayKey()) {
   const t = ticks(key);
-  return suppList().filter((x) => t[x.id]).length;
+  return listOn(key).filter((x) => t[x.id]).length;
 }
-export const allDone = (key = dayKey()) => suppList().length > 0 && doneCount(key) === suppList().length;
+export const allDone = (key = dayKey()) => listOn(key).length > 0 && doneCount(key) === listOn(key).length;
 
 // Days in a row with every supplement ticked (today counts once it is done).
 export function suppStreak() {
@@ -79,7 +112,7 @@ export function suppStreak() {
   let n = 0;
   while (n < 999) {
     const t = ticks(k);
-    if (!Object.keys(t).length || !suppList().every((x) => t[x.id])) break;
+    if (!Object.keys(t).length || !listOn(k).every((x) => t[x.id])) break;
     n++;
     k = addDays(k, -1);
   }
@@ -98,35 +131,54 @@ function shakeItems(x) {
 }
 export const shakeKcal = (x) => shakeItems(x).reduce((a, i) => a + packItem(i).kcal, 0);
 
-// Tick or untick. Returns { on, all, streak }.
+// Take one more (or, when all are taken, start over). Returns { on, all, streak, count, n }.
 export function toggleSupp(id, key = dayKey()) {
   const x = suppList().find((s) => s.id === id);
   if (!x) return { on: false };
-  const on = !isTicked(id, key);
-  if (on && PRESETS[x.kind]?.food) {
+  const n = perDay(x);
+  const cur = countOf(id, key);
+  return setCount(x, cur >= n ? 0 : cur + 1, key);
+}
+export function decSupp(id, key = dayKey()) {
+  const x = suppList().find((s) => s.id === id);
+  if (!x) return { on: false };
+  return setCount(x, Math.max(0, countOf(id, key) - 1), key);
+}
+
+function setCount(x, count, key) {
+  const id = x.id;
+  const n = perDay(x);
+  const before = countOf(id, key);
+  // Each scoop of protein powder is also a shake in the food diary.
+  if (PRESETS[x.kind]?.food && count > before) {
     const items = shakeItems(x);
-    if (items.length) logItems(key, items, { title: tr('Protein shake', 'Proteinshake'), source: 'supp', extra: { supp: id, tags: ['protein'] } });
+    for (let i = before; i < count; i++) if (items.length) logItems(key, items, { title: tr('Protein shake', 'Proteinshake'), source: 'supp', extra: { supp: id, tags: ['protein'] } });
   }
   mutate(() => {
     const d = day(key);
     d.supps ||= {};
-    if (on) d.supps[id] = Date.now();
-    else {
-      delete d.supps[id];
-      d.logs = d.logs.filter((l) => l.supp !== id);
+    d.suppN ||= {};
+    d.suppN[id] = count;
+    if (count >= n) d.supps[id] = d.supps[id] || Date.now();
+    else delete d.supps[id];
+    if (PRESETS[x.kind]?.food && count < before) {
+      // Remove the newest shakes until they match the count.
+      let extra = before - count;
+      for (let i = d.logs.length - 1; i >= 0 && extra > 0; i--) if (d.logs[i].supp === id) { d.logs.splice(i, 1); extra--; }
     }
   });
-  return { on, all: allDone(key), streak: suppStreak() };
+  return { on: count > before, all: allDone(key), streak: suppStreak(), count, n, name: suppName(x), unit: suppUnit(x) };
 }
 
 // Friendly words after a tick.
 export function suppCheer(res) {
-  if (!res.on) return tr('Unticked.', 'Fjernet.');
+  if (!res.on) return res.count ? tr(`${res.count} of ${res.n} now.`, `${res.count} av ${res.n} nå.`) : tr('Unticked.', 'Fjernet.');
   if (res.all) {
     return res.streak >= 2
       ? tr(`All done today. ${res.streak} days in a row, that's how it works.`, `Alt gjort i dag. ${res.streak} dager på rad, det er sånn det virker.`)
       : tr('All done today. Small habit, big help.', 'Alt gjort i dag. Liten vane, stor hjelp.');
   }
+  if (res.n > 1 && res.count < res.n) return tr(`${res.count} of ${res.n} ${unitWord(res.unit, res.n)}. Nice.`, `${res.count} av ${res.n} ${unitWord(res.unit, res.n)}. Fint.`);
   const lines = [tr('Ticked. Nice.', 'Krysset av. Fint.'), tr('Done. One less thing to think about.', 'Gjort. Én ting mindre å tenke på.'), tr('Ticked. Steady wins.', 'Krysset av. Jevnt vinner.')];
   return lines[doneCount() % lines.length];
 }
@@ -149,11 +201,11 @@ export function setSupps(fn) {
     s.supps.setup = true;
   });
 }
-export const addCustomSupp = (name, dose) => setSupps((sp) => sp.list.push({ id: `s-${uid()}`, kind: 'custom', name: String(name).trim().slice(0, 40), dose: String(dose || '').trim().slice(0, 30) }));
+export const addCustomSupp = (name, n = 1, unit = 'pill', each = '') => setSupps((sp) => sp.list.push({ id: `s-${uid()}`, kind: 'custom', since: dayKey(), name: String(name).trim().slice(0, 40), n: Math.max(1, Math.min(20, Number(n) || 1)), unit, each: String(each || '').trim().slice(0, 30) }));
 
 // Short description for the AI coach and trends.
 export function suppText(key = dayKey()) {
   const t = ticks(key);
-  return suppList().map((x) => `${suppName(x)}${t[x.id] ? ' ✓' : ''}`).join(', ');
+  return suppList().map((x) => `${suppName(x)} ${countOf(x.id, key)}/${perDay(x)} ${unitWord(suppUnit(x), perDay(x))}${t[x.id] ? ' ✓' : ''}`).join(', ');
 }
 export const proteinNote = (x) => (S().prefs.calm ? '' : `≈ ${n0(shakeKcal(x))} kcal`);

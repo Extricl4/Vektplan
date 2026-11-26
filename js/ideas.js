@@ -58,10 +58,6 @@ export function ideasFor(key = dayKey()) {
   const pool = RECIPES.filter((r) => !eaten.has(r.id));
   if (rough) rot(pool.filter((r) => r.gentle && fits(r))).concat(pool.filter((r) => r.gentle)).forEach((r) => add(recipeIdea(r, tr('Gentle', 'Mild'))));
   if (afterTraining || lowProtein) rot(pool.filter((r) => (RECIPE_MACROS[r.id]?.[0] || 0) >= 18 && (fits(r) || kind === 'snack'))).slice(0, 3).forEach((r) => add(recipeIdea(r, tr('Protein', 'Protein'))));
-  // Your own meals that fit this time of day, most used first.
-  myMeals().filter((m) => !eaten.has(m.id) && (!m.when?.length || m.when.includes(whenOf(kind))))
-    .sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 3)
-    .forEach((m) => add({ t: 'my', id: m.id, title: m.name, kcal: mealKcal(m) || null, p: mealMacros(m)?.[0] ?? null, tag: tr('Yours', 'Din') }));
   rot(pool.filter(fits)).forEach((r) => add(recipeIdea(r, r.min <= 10 ? tr('Quick', 'Rask') : '')));
   return { why, kind, items: out.slice(0, 6) };
 }

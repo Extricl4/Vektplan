@@ -140,7 +140,7 @@ export function contextText() {
   const plan = training();
   if (plan.sessions?.length) lines.push(`His own training plan: ${plan.level || 'gentle'} level, ${plan.place || 'home'}, ${plan.sessions.map((x) => x.name).join(', ')}.`);
   const mine = (st.myMeals || []).slice(0, 12).map((m) => m.name);
-  if (mine.length) lines.push(`Food he has saved as his own: ${mine.join(', ')}.`);
+  // (Saved own meals are not used any more: he types what he eats.)
   if (suppList().length) lines.push(`Supplements he takes (✓ = ticked today): ${suppText(key)}.`);
   {
     const wk = rangeStats(lastDays(7));

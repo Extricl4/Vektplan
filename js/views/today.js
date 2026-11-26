@@ -10,10 +10,10 @@ import { esc, dayKey, nowMinutes, clock, dayNum, isIOS, isStandalone } from '../
 import { nav } from '../nav.js';
 import { update, applyUpdate } from '../updates.js';
 import { getLang } from '../i18n.js';
-import { hasHealth, healthDay, fmtSleepCompact, sleepWindow, latestRestingHR, syncedToday, lastSync } from '../health.js';
+import { hasHealth, healthDay, fmtSleepCompact, sleepWindow, latestRestingHR, syncedToday } from '../health.js';
 import { syncHealth } from './health.js';
 import { shortcutURL, markPending } from '../health.js';
-import { suppsCard, tickSupp, suppsSheet } from './supps.js';
+import { suppsCard, tickSupp, minusSupp, suppsSheet } from './supps.js';
 import { totalsCard, timeline, ideasCard, diaryActions } from './diary.js';
 import { todayLine } from '../encourage.js';
 
@@ -166,7 +166,10 @@ function watchCard() {
       <a class="wstat" href="#/health" style="text-decoration:none;color:inherit"><span class="tiny muted">${tr('Resting pulse', 'Hvilepuls')}</span><span class="v num">${rhr ? rhr.bpm : '–'}</span><span class="tiny muted">${rhr ? tr('beats/min', 'slag/min') : '&nbsp;'}</span></a>
       <a class="wstat" href="#/health" style="text-decoration:none;color:inherit"><span class="tiny muted">${calm ? tr('Active today', 'Aktiv i dag') : tr('Moved today', 'Bevegelse i dag')}</span><span class="v num">${moved}</span><span class="tiny muted num">${h.steps != null ? `${n0(h.steps)} ${tr('steps', 'skritt')}` : '&nbsp;'}</span></a>
     </div>
-    ${stale ? `<p class="tiny muted">${lastSync() ? tr('Not synced today yet. Run the Vektplan Health shortcut, then tap Sync.', 'Ikke hentet i dag ennå. Kjør snarveien Vektplan Health, og trykk så Hent.') : tr('Run the Vektplan Health shortcut, then tap Sync.', 'Kjør snarveien Vektplan Health, og trykk så Hent.')}</p>` : ''}
+    ${stale ? `<p class="tiny muted" style="line-height:1.45">${tr('Not brought in today yet. If the shortcut already ran (or runs by itself each morning), just tap Paste.', 'Ikke hentet inn i dag ennå. Har snarveien kjørt (eller kjører den av seg selv hver morgen), trykker du bare Lim inn.')}</p>
+      <div class="row" style="gap:8px"><button class="btn small primary" style="flex:1" data-act="syncHealth">${icon('download', 16)} ${tr('Paste', 'Lim inn')}</button>
+        <a class="btn small secondary" style="flex:1;text-decoration:none" href="${esc(shortcutURL())}" data-act="runShortcut">${icon('refresh', 16)} ${tr('Run shortcut', 'Kjør snarvei')}</a></div>
+      <a class="tiny link-btn" href="#/health" style="text-decoration:none">${tr('Make it run by itself each morning', 'Få den til å kjøre av seg selv hver morgen')} →</a>` : ''}
     ${note}
   </section>`;
 }
@@ -273,6 +276,7 @@ export const actions = {
   ...diaryActions,
   photoLog: () => { nav.go('log/photo'); },
   supp: (el) => tickSupp(el),
+  suppMinus: (el) => minusSupp(el),
   suppEdit: () => suppsSheet(),
   ate: () => {
     const { current } = dayStatus();

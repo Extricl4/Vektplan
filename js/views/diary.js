@@ -7,6 +7,7 @@ import { esc, dayKey, clock, parseKey } from '../util.js';
 import { nav } from '../nav.js';
 import { dayTotals, logMac, logItems, proteinGoal, proteinSuggestion } from '../nutrition.js';
 import { ideasFor } from '../ideas.js';
+import { macroBar, legend } from './charts.js';
 import { recipeById } from '../data/recipes.js';
 import { myMealById } from '../mymeals.js';
 import { amountSheet, recipeItem, mealItem, macroLine, amountText, restoreItem } from '../amount.js';
@@ -39,6 +40,7 @@ export function totalsCard(key = dayKey(), { link = true } = {}) {
       <div class="mac f"><span class="tiny muted">${tr('Fat', 'Fett')}</span><span class="v num">${g(t.f)}</span></div>
       <div class="mac c"><span class="tiny muted">${tr('Carbs', 'Karbo')}</span><span class="v num">${g(t.c)}</span></div>
     </div>
+    ${t.p + t.f + t.c > 0 ? `${macroBar([t.p, t.f, t.c], 8)}${legend()}` : ''}
     ${t.unknown ? `<p class="tiny muted">${tr(`${t.unknown} ${t.unknown === 1 ? 'entry has' : 'entries have'} no protein info (older or own foods).`, `${t.unknown} ${t.unknown === 1 ? 'oppføring mangler' : 'oppføringer mangler'} proteininfo (eldre eller egne).`)}</p>` : ''}
     ${!pGoal && isToday && proteinSuggestion() && !st.prefs.hideProteinTip ? `<button class="link-btn small" data-act="goalP" style="align-self:flex-start">${icon('sparkle', 14)} ${tr('Set a protein goal (optional)', 'Sett et proteinmål (valgfritt)')}</button>` : ''}
   </section>`;
@@ -53,6 +55,7 @@ export function timeline(key = dayKey(), { empty = true } = {}) {
   if (!logs.length) {
     return empty ? `<section class="card tight"><p class="small muted" style="line-height:1.5">${key === dayKey() ? tr('Nothing logged yet today. Tap "Log what you ate" when you have had something, even a few bites.', 'Ingenting logget ennå i dag. Trykk «Logg det du spiste» når du har fått i deg noe, selv noen biter.') : tr('Nothing logged this day.', 'Ingenting logget denne dagen.')}</p></section>` : '';
   }
+  const maxK = Math.max(1, ...logs.map((l) => l.kcal || 0));
   return `<section class="card" style="padding:8px 16px" aria-label="${tr('What you ate', 'Det du spiste')}"><div class="list">${logs.map((l) => {
     const m = logMac(l);
     const sub = [
@@ -61,7 +64,8 @@ export function timeline(key = dayKey(), { empty = true } = {}) {
     ].filter(Boolean).join(' · ');
     return `<button class="item" data-act="entry" data-k="${key}" data-id="${l.id}" style="align-items:flex-start">
       <span class="small muted num" style="width:44px;flex:none;padding-top:2px">${clock(l.ts)}</span>
-      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(l.title)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ''}</span>
+      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(l.title)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ''}
+        ${!calm && m ? `<span class="entry-bar" style="display:block;width:${Math.max(18, Math.min(100, (l.kcal / maxK) * 100)).toFixed(0)}%">${macroBar(m, 6)}</span>` : ''}</span>
       ${calm ? '' : `<span class="col" style="align-items:flex-end;gap:1px;flex:none"><span class="small num" style="font-weight:600">${n0(l.kcal)}</span>${m ? `<span class="tiny muted num">${Math.round(m[0])} g P</span>` : ''}</span>`}</button>`;
   }).join('')}</div></section>`;
 }

@@ -3,7 +3,7 @@
 import { S, peekDay } from './store.js';
 import { totals, workoutsOn } from './planner.js';
 import { healthDay } from './health.js';
-import { suppList } from './supps.js';
+import { listOn } from './supps.js';
 import { dayTotals } from './nutrition.js';
 import { dayKey, addDays } from './util.js';
 
@@ -36,7 +36,7 @@ export function daySummary(key) {
     trainMin: wo.reduce((a, x) => a + (x.minutes || 0), 0),
     workoutNames: wo.map((x) => x.name || x.wid),
     suppDone: ticked.length,
-    suppAll: suppList().length > 0 && suppList().every((x) => ticked.includes(x.id)),
+    suppAll: listOn(key).length > 0 && listOn(key).every((x) => ticked.includes(x.id)),
     symptoms: d.journal?.symptoms || [],
     stomach: d.stomach?.length ? d.stomach[d.stomach.length - 1].level : null,
   };

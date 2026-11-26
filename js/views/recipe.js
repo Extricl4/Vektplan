@@ -20,7 +20,6 @@ export function render(ctx) {
   const fav = S().favorites.includes(r.id);
   const servings = servingsFor[r.id] ?? r.serves;
   const f = servings / r.serves;
-  const onList = (Array.isArray(S().shopping.recipes) ? S().shopping.recipes : []).some((x) => x.rid === r.id);
   return `<div class="screen no-tabs" style="gap:16px">
     <div style="position:relative;height:210px;border-radius:var(--r-l);background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:none">
       ${plate(r, 160)}
@@ -48,7 +47,6 @@ export function render(ctx) {
         <p style="margin-top:4px;line-height:1.55">${esc(L(s))}</p></div>`).join('')}
     </section>
     <div class="btns" style="margin-top:4px">
-      <button class="btn secondary" data-act="shop">${icon('cart', 18)} ${onList ? tr('On the list ✓', 'På listen ✓') : tr('Add to shopping list', 'Legg i handlelisten')}</button>
       <button class="btn primary" data-act="log">${icon('check', 18)} ${tr('I ate this', 'Jeg spiste dette')}</button></div>
   </div>`;
 }
@@ -79,15 +77,5 @@ export const actions = {
       add: tr('Log it', 'Logg det'),
       onDone: (x) => { logItems(dayKey(), [x], { source: 'recipe', rid: r.id }); toast(cheer()); nav.go('today'); },
     });
-  },
-  shop: (el, e, ctx) => {
-    const r = recipeById(ctx.params[0]);
-    if (!r) return;
-    const n = servingsFor[r.id] ?? r.serves;
-    const list = Array.isArray(S().shopping.recipes) ? S().shopping.recipes : [];
-    const on = list.some((x) => x.rid === r.id);
-    mutate((s) => { s.shopping.recipes = on ? list.filter((x) => x.rid !== r.id) : [...list, { rid: r.id, n }]; });
-    toast(on ? tr('Removed from the shopping list.', 'Fjernet fra handlelisten.') : tr(`Added to the shopping list (${n} ${n === 1 ? 'portion' : 'portions'}).`, `Lagt i handlelisten (${n} ${n === 1 ? 'porsjon' : 'porsjoner'}).`));
-    nav.rerender();
   },
 };

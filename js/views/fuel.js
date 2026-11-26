@@ -25,7 +25,7 @@ function recipeRow(id, act = 'logR') {
 }
 
 function snackMine() {
-  return sortedMeals(myMeals().filter((m) => !m.when?.length || m.when.includes('snack'))).slice(0, 2);
+  return []; // saved meals are no longer shown (he types what he eats)
 }
 
 // Shown after a workout: a calm summary and a few easy things to eat.

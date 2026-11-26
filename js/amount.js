@@ -6,11 +6,26 @@ import { tr, L, n0, getLang } from './i18n.js';
 import { FOODS } from './data/foods.js';
 import { AMOUNTS, UNIT_NAMES, LIQUID, LOW_MAX, LADDER } from './data/amounts.js';
 import { FOOD_MACROS, RECIPE_MACROS } from './data/macros.js';
+import { NUTRITION, BASE_FOODS, CATEGORY_OF } from './data/foodbase.js';
 import { openSheet, closeSheet, icon, fodmapBadge } from './ui.js';
 import { esc, uid } from './util.js';
 
-export const allFoods = () => [...(S().custom || []), ...FOODS];
-export const foodById = (id) => allFoods().find((f) => f.id === id) || null;
+// Base foods from Matvaretabellen, shaped like the others. Built once.
+const BASE = BASE_FOODS.map((b) => ({ ...b, base: true, p: { en: '', nb: '' }, kcal: NUTRITION[b.id]?.[1] || 0, tags: b.tags || [] }));
+const OLD = FOODS.map((f) => ({ ...f, cat: CATEGORY_OF[f.id] || 'other' }));
+export const allFoods = () => [...(S().custom || []), ...OLD, ...BASE];
+let index = null;
+let indexFor = null;
+export const foodById = (id) => {
+  const c = S().custom || [];
+  if (index && indexFor === c) return index.get(id) || null;
+  index = new Map(allFoods().map((f) => [f.id, f]));
+  indexFor = c;
+  return index.get(id) || null;
+};
+export const foodsIn = (cat) => allFoods().filter((f) => !f.custom && f.cat === cat).sort((a, b) => L(a.n).localeCompare(L(b.n), getLang() === 'nb' ? 'nb' : 'en'));
+// Nutrition per gram from Matvaretabellen, if we have it: { k, m: [p, f, c] }
+const perGram = (id) => { const x = NUTRITION[id]; return x ? { k: x[1] / 100, m: [x[2] / 100, x[3] / 100, x[4] / 100] } : null; };
 
 // Macros [protein, fat, carbs] scaled by a factor, or null when unknown.
 const scaleM = (m, x) => (m ? m.map((v) => v * x) : null);
@@ -23,11 +38,17 @@ export function unitsForFood(f) {
     if (f.unit) return [{ u: f.unit, g: null, k: f.kcal || 0, m: ownM(f) }];
     return [{ u: 'portion', g: null, k: f.kcal || 0, m: ownM(f) }]; // older own foods
   }
+  const pg = perGram(f.id);
+  if (f.base) {
+    const units = (f.u || []).map(([u, g]) => ({ u, g, k: pg.k * g, m: scaleM(pg.m, g) }));
+    const mass = { u: f.liquid ? 'ml' : 'g', g: 1, k: pg.k, m: pg.m };
+    return f.d?.[1] === 'g' || f.d?.[1] === 'ml' ? [mass, ...units] : [...units, mass];
+  }
   const spec = AMOUNTS[f.id];
   const fm = FOOD_MACROS[f.id] || null;
   if (!spec) return [{ u: 'portion', g: null, k: f.kcal, m: fm }];
-  const kpg = f.kcal / spec[0];
-  const mpg = scaleM(fm, 1 / spec[0]);
+  const kpg = pg ? pg.k : f.kcal / spec[0];
+  const mpg = pg ? pg.m : scaleM(fm, 1 / spec[0]);
   const units = spec.slice(1).map((s) => {
     const [u, g] = s.split(':');
     return { u, g: Number(g), k: kpg * Number(g), m: scaleM(mpg, Number(g)) };
@@ -45,6 +66,7 @@ export function snap(amount, unit) {
 }
 
 export function defaultAmount(f, units = unitsForFood(f)) {
+  if (f.base && f.d) return { amount: f.d[0], unit: f.d[1] === 'g' && f.liquid ? 'ml' : f.d[1] };
   const spec = AMOUNTS[f.id];
   const first = units[0];
   if (!spec || !first.g) return { amount: 1, unit: first.u };
@@ -58,7 +80,7 @@ export function foodItem(f, amount, unit) {
   return {
     k: uid(), src: 'food', fid: f.id, name: L(f.n), units,
     amount: amount ?? d.amount, unit: unit && units.some((x) => x.u === unit) ? unit : d.unit,
-    fodmap: f.f || 'low', why: f.why ? L(f.why) : '', tags: f.tags || [], lowMax: LOW_MAX[f.id] || null,
+    fodmap: f.f || 'low', why: f.why ? L(f.why) : '', tags: f.tags || [], lowMax: f.lowMax || LOW_MAX[f.id] || null, pair: f.pair || null,
   };
 }
 
@@ -155,7 +177,7 @@ const QUICK = {
   ml: [100, 200, 250, 330, 500],
 };
 
-function stepAmount(amount, unit, dir) {
+export function stepAmount(amount, unit, dir) {
   if (isMass(unit)) {
     const step = amount < 50 ? 5 : amount < 200 ? 10 : 25;
     return Math.max(5, Math.min(2000, amount + dir * step));
@@ -266,7 +288,8 @@ const PREFERRED = {
   brod: 'spelt-bread', bread: 'spelt-bread', skive: 'spelt-bread', ost: 'cheese', cheese: 'cheese', melk: 'lf-milk', milk: 'lf-milk',
   ris: 'rice', rice: 'rice', egg: 'egg', eggs: 'egg', potet: 'potatoes', poteter: 'potatoes', potato: 'potatoes', kylling: 'chicken-breast',
   chicken: 'chicken-breast', laks: 'salmon', salmon: 'salmon', banan: 'banana-firm', banana: 'banana-firm', yoghurt: 'lf-yogurt',
-  yogurt: 'lf-yogurt', smor: 'butter', butter: 'butter', pasta: 'gf-pasta', havre: 'oats', oats: 'oats', gryn: 'oats', protein: 'whey', whey: 'whey',
+  yogurt: 'lf-yogurt', smor: 'butter', butter: 'butter', pasta: 'pasta-raw', havre: 'oats', oats: 'oats', gryn: 'oats', protein: 'whey', whey: 'whey',
+  beef: 'beef-raw', biff: 'beef-raw', storfe: 'beef-raw', kjott: 'beef-raw', kjottdeig: 'mince-raw', mince: 'mince-raw', karbonade: 'mince-lean-raw', svin: 'pork-tenderloin-raw', pork: 'pork-tenderloin-raw', kalkun: 'turkey-breast-raw', turkey: 'turkey-breast-raw', torsk: 'cod-raw', cod: 'cod-raw', skyr: 'skyr', kvarg: 'quark',
 };
 
 export function searchFoods(q, max = 12) {

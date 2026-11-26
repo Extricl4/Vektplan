@@ -46,6 +46,18 @@ export function slotAt(minutes) {
 }
 
 // Log a list of amount items as one entry (a meal or a snack) at a time you choose.
+// "Storfekjøtt, magert, rå" + "Hvit ris, ukokt" → "Storfekjøtt og hvit ris" (the details stay in the items).
+export function autoTitle(items) {
+  if (items.length === 1) return items[0].name;
+  const short = (n) => String(n || '').split(/,| \(/)[0].trim();
+  const parts = [...new Set(items.map((i) => short(i.name)).filter(Boolean))];
+  const low = (t, i) => (i === 0 || !/^\p{Lu}\p{Ll}/u.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
+  const shown = parts.slice(0, 3).map(low);
+  const and = tr(' and ', ' og ');
+  if (parts.length > 3) return `${shown.join(', ')}${tr(' and more', ' og mer')}`;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(', ')}${and}${shown[shown.length - 1]}` : shown[0] || '';
+}
+
 export function logItems(key, list, { title = '', ts = null, source = 'search', myId = null, rid = null, extra = {} } = {}) {
   const items = list.map(packItem);
   if (!items.length) return null;
@@ -53,7 +65,7 @@ export function logItems(key, list, { title = '', ts = null, source = 'search', 
   const d = new Date(when);
   const known = items.filter((i) => i.p != null);
   const mac = known.length ? sum3(known.map((i) => [i.p, i.f, i.c])).map(r1) : null;
-  const name = title || (items.length === 1 ? items[0].name : items.slice(0, 3).map((i) => i.name).join(', ') + (items.length > 3 ? '…' : ''));
+  const name = title || autoTitle(items);
   return addLog(key, {
     ts: when,
     slot: slotAt(d.getHours() * 60 + d.getMinutes()),

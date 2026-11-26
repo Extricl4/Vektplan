@@ -36,7 +36,7 @@ function defaults() {
     myMeals: [], // your own food: { id, name, kcal, fodmap, when: [kinds], note, used, last } (js/mymeals.js)
     training: {}, // your own training plan (js/training.js); empty = the built-in rhythm
     // Daily supplements to tick off (js/supps.js). Ticks are stored per day in days[key].supps.
-    supps: { list: [{ id: 'creatine-gummy', kind: 'creatine-gummy' }, { id: 'protein', kind: 'protein', mix: 'water' }, { id: 'vitd', kind: 'vitd' }], setup: false },
+    supps: { list: [{ id: 'creatine-gummy', kind: 'creatine-gummy', n: 3, unit: 'gummy', each: '1 g' }, { id: 'protein', kind: 'protein', mix: 'water', n: 1, unit: 'scoop' }, { id: 'vitd', kind: 'vitd', n: 1, unit: 'tablet' }, { id: 'multi', kind: 'multi', n: 1, unit: 'tablet' }], setup: false },
   };
 }
 
@@ -73,6 +73,11 @@ function migrate(saved) {
   }
   if (s.training.todayPlace?.place === 'dumbbells') s.training.todayPlace.place = 'home';
   if (!s.supps || typeof s.supps !== 'object' || !Array.isArray(s.supps.list)) s.supps = defaults().supps;
+  // 1.5: he takes a multivitamin too; add it once (he can switch it off in Edit).
+  if (!saved?.supps?.v15) {
+    if (s.supps.list.length && !s.supps.list.some((x) => x.kind === 'multi')) s.supps.list.push({ id: 'multi', kind: 'multi', n: 1, unit: 'tablet', since: dayKey() });
+    s.supps.v15 = true;
+  }
   s.schema = SCHEMA;
   return s;
 }
