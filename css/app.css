@@ -642,3 +642,19 @@ div.wk-row { cursor: default; }
 .more-opts summary .small { margin-left: auto; text-align: right; }
 .more-opts[open] summary svg { transform: rotate(180deg); }
 .more-opts:not([open]) > :not(summary) { display: none; }
+.round-card.met .srow { display: none; }
+/* Protein in one tap */
+.pblock { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pb-title { font-weight: 700; font-size: 15px; color: var(--ink); }
+.pb-v { font-size: 22px; font-weight: 800; color: var(--ink); }
+.pbar { height: 12px; border-radius: 99px; background: var(--surface2); overflow: hidden; }
+.pbar i { display: block; height: 100%; border-radius: 99px; background: var(--c-protein); transition: width .4s; }
+.pgoal-tip { display: flex; flex-direction: column; gap: 8px; }
+.pq { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 2px; }
+.pq::-webkit-scrollbar { display: none; }
+.pq-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 38px; padding: 0 12px; border-radius: 99px; border: 1.5px solid var(--accent-mid); background: var(--surface); color: var(--ink); font: 500 14px/1 Figtree, sans-serif; cursor: pointer; white-space: nowrap; }
+.pq-chip svg { color: var(--accent); }
+.pq-chip b { color: var(--accent); font-weight: 700; }
+.pq-chip:active { background: var(--accent-soft); }
+.pq-undo { align-self: flex-start; padding: 2px 0; }
+.train-today { gap: 10px; }

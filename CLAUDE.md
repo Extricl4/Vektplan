@@ -70,6 +70,12 @@ Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
   else?" button, the week as a plain 7-row list (tap a day → sheet to see/start it), history, "good to know", plan summary.
   Plain words everywhere: "rounds" and "times" instead of sets/reps (`goalText`), `niceName()` turns "Fokus: Biceps + Kjerne"
   into "Biceps og kjerne". No guilt: missed days are just dimmed, never labelled. Keep it this simple.
+- 1.8 "super easy + motivation + protein" (he said a hard app must never be why he stops training):
+  Today has today's training in one card with a Start button and this week's dots (`trainToday`), a "weeks in a row" tile
+  (`weekStreak`: weeks with 2+ training days; `weekProgress` for this week), and protein front and centre in the eating card
+  (`js/views/proteinquick.js`: big bar toward his optional goal, one-tap "Use X g" from 1.6 g/kg, and one-tap low-FODMAP
+  protein foods with an undo; the shake uses `addOne` so it never wraps to zero). The after-workout sheet shows the week,
+  the streak and the same one-tap protein. In the workout, once the rounds are done the big button is "Next exercise".
 - Programs: start2, focus3 (full body + a focus day for his chosen muscles, default biceps + core), full3, ul4.
   Focus muscles: chest, back, shoulders, biceps, triceps, legs, glutes, core (old "arms" → biceps + triceps via `normFocus`).
 - How-to for exercises: `js/data/howto.js` (what you need, steps split by "|", a tip) and `js/views/howto.js`

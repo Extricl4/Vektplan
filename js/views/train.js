@@ -13,7 +13,7 @@ import { nav } from '../nav.js';
 import { healthDay, fmtSleep } from '../health.js';
 import {
   programReady, training, sessions, workoutDef, activityName, exName, groupsText, lastLog, saveWorkout, kgFmt,
-  currentPlace, setTodayPlace, allowedEquip, planWorkoutsOn, ownWorkoutsOn, ownIcon, buildProgram, applyProgram, niceName, goalText,
+  currentPlace, setTodayPlace, allowedEquip, planWorkoutsOn, ownWorkoutsOn, ownIcon, buildProgram, applyProgram, niceName, goalText, nextTraining,
 } from '../training.js';
 
 export { activityName, saveWorkout, niceName, goalText };
@@ -38,17 +38,6 @@ const DAY_FULL = (k) => {
   const s = parseKey(k).toLocaleDateString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { weekday: 'long' });
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
-
-// The next planned training day after today (to show on rest days).
-function nextSession(from = dayKey()) {
-  for (let i = 1; i <= 7; i++) {
-    const k = addDays(from, i);
-    const act = plannedActivity(k);
-    const def = workoutDef(act);
-    if (def && def.kind === 'strength') return { k, act, def, i };
-  }
-  return null;
-}
 
 function placeLine() {
   const place = currentPlace();
@@ -81,7 +70,7 @@ function todayCard() {
   }
 
   if (act === 'rest' || !workoutDef(act)) {
-    const nx = nextSession(key);
+    const nx = nextTraining(key);
     return `<section class="card hero-train">
       ${head}
       <h2 class="h1" style="font-size:26px">${tr('Rest day', 'Hviledag')}</h2>

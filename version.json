@@ -1,9 +1,15 @@
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "date": "2026-11-27",
-  "notes": "New, simpler Train tab: today's training at the top with one Start button and a numbered list, your week as a plain list, and a 3-question setup if you have no plan yet. Plain words: rounds and times instead of sets and reps.",
-  "notes_nb": "Ny og enklere Trening-fane: dagens trening øverst med én Start-knapp og en nummerert liste, uka di som en enkel liste, og 3 spørsmål for å lage plan hvis du ikke har en. Enkle ord: runder og ganger i stedet for sett og reps.",
+  "notes": "Easier and more motivating: today's training with one Start button on Today, weeks in a row, and protein in one tap (shake, eggs, milk, cheese, tuna) with an optional goal. After training: your week, your streak and one-tap protein.",
+  "notes_nb": "Enklere og mer motiverende: dagens trening med én Start-knapp på I dag, uker på rad, og protein med ett trykk (shake, egg, melk, ost, tunfisk) med et valgfritt mål. Etter trening: uka di, rekka di og protein med ett trykk.",
   "history": [
+    {
+      "version": "1.7.0",
+      "date": "2026-11-27",
+      "notes": "New, simpler Train tab: today's training at the top with one Start button and a numbered list, your week as a plain list, and a 3-question setup if you have no plan yet. Plain words: rounds and times instead of sets and reps.",
+      "notes_nb": "Ny og enklere Trening-fane: dagens trening øverst med én Start-knapp og en nummerert liste, uka di som en enkel liste, og 3 spørsmål for å lage plan hvis du ikke har en. Enkle ord: runder og ganger i stedet for sett og reps."
+    },
     {
       "version": "1.6.0",
       "date": "2026-11-26",

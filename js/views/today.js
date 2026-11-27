@@ -4,7 +4,7 @@ import { tr, L, n0, n1, greeting, longDate, minutesLeft, kindName } from '../i18
 import { icon, ring, mealsBar, fodmapBadge, sparkline, plate, toast, sheetOpen, tabbar } from '../ui.js';
 import { eatSheet, smallerSheet, skipCurrent, editLogSheet, recipeShort, swapSheet } from '../meals.js';
 import { sortedMeals, mealsFor, kcalLine } from '../mymeals.js';
-import { workoutDef, niceName } from '../training.js';
+import { workoutDef, niceName, programReady, planWorkoutsOn, ownWorkoutsOn, weekProgress, weekStreak, nextTraining } from '../training.js';
 import { WORDS } from '../data/words.js';
 import { esc, dayKey, nowMinutes, clock, dayNum, isIOS, isStandalone } from '../util.js';
 import { nav } from '../nav.js';
@@ -104,6 +104,41 @@ function nextCard(current, list) {
   </section>`;
 }
 
+// Today's training in one line with a Start button, and this week's dots. Motivation, not pressure.
+function trainToday() {
+  const key = dayKey();
+  const head = (ic, small, title, sub, btn) => `<div class="row" style="gap:12px"><span class="plate-mini" aria-hidden="true">${ic}</span>
+      <div class="grow" style="min-width:0"><span class="tiny muted" style="display:block">${small}</span><b class="h3" style="display:block">${title}</b>${sub ? `<span class="small muted">${sub}</span>` : ''}</div>${btn}</div>`;
+  if (!programReady()) {
+    return `<a class="card tight train-today" href="#/train" style="text-decoration:none;color:inherit">${head(icon('dumbbell', 20), tr('Training', 'Trening'), tr('Make your training plan', 'Lag treningsplanen din'), tr('Three quick questions, one minute', 'Tre raske spørsmål, ett minutt'), icon('chevR', 18))}</a>`;
+  }
+  const act = plannedActivity(key);
+  const def = workoutDef(act);
+  const done = planWorkoutsOn(key);
+  const own = ownWorkoutsOn(key);
+  const wp = weekProgress(key);
+  const dots = wp.target ? `<div class="row between" style="gap:10px"><div class="wk-bar" style="flex:1" aria-hidden="true">${Array.from({ length: Math.max(wp.target, wp.done) }, (_, i) => `<i class="${i < wp.done ? 'on' : ''}"></i>`).join('')}</div>
+    <span class="small muted" style="white-space:nowrap">${Math.min(wp.done, 99)} ${tr('of', 'av')} ${wp.target} ${tr('this week', 'denne uka')}</span></div>` : '';
+  let body;
+  if (done.length || own.length) {
+    body = head(`<span style="color:var(--accent)">${icon('check', 22, 'stroke-width="3"')}</span>`, tr('Training today', 'Trening i dag'), tr('Done. Well done!', 'Ferdig. Bra jobba!'),
+      esc([...done.map((w) => niceName(workoutDef(w.wid)?.name || w.name || '')), ...own.map((w) => w.name)].filter(Boolean).join(', ')), '');
+  } else if (def && def.kind === 'strength') {
+    body = head(icon('dumbbell', 20), tr('Training today', 'Trening i dag'), esc(niceName(def.name)), `${def.ex.length} ${tr('exercises', 'øvelser')} · ${tr('about', 'ca.')} ${def.minutes} min`,
+      `<a class="btn primary small" href="#/workout/${act}" style="flex:none">${icon('play', 16)} ${tr('Start', 'Start')}</a>`);
+  } else {
+    const nx = nextTraining(key);
+    const dn = nx ? (nx.i === 1 ? tr('tomorrow', 'i morgen') : parseKeyName(nx.k)) : '';
+    body = head(icon('bed', 20), tr('Training today', 'Trening i dag'), tr('Rest day', 'Hviledag'), nx ? `${tr('Next', 'Neste')}: ${esc(dn)} · ${esc(niceName(nx.def.name))}` : tr('Muscles grow while you rest', 'Musklene vokser mens du hviler'), icon('chevR', 18));
+    return `<a class="card tight train-today" href="#/train" style="text-decoration:none;color:inherit">${body}${dots}</a>`;
+  }
+  return `<section class="card tight train-today">${body}${dots}</section>`;
+}
+const parseKeyName = (k) => {
+  const [y, m, d] = k.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(getLang() === 'nb' ? 'nb-NO' : 'en-GB', { weekday: 'long' });
+};
+
 // A gentle way in to the Apple Watch, until it is connected or dismissed.
 function watchHint() {
   if (hasHealth() || S().health?.setup || S().prefs.watchHint === false) return '';
@@ -125,19 +160,13 @@ function tiles() {
         <span class="tiny" style="font-weight:600;color:var(--accent);margin-top:auto">${change != null ? `${change >= 0 ? '+' : ''}${n1(change)} kg ${tr('since start', 'siden start')}` : tr('Your starting point', 'Startpunktet ditt')}</span></a>`
     : `<a class="tile" href="#/progress/trends"><span class="small muted">${tr('Weight', 'Vekt')}</span>
         <span class="big">${icon('scale', 26)}</span><span class="tiny" style="font-weight:600;color:var(--accent)">${tr('Log your weight', 'Logg vekten din')}</span></a>`;
-  const act = plannedActivity(key);
-  const done = workoutsOn(key);
-  const wk = workoutDef(act);
-  const watchMin = healthDay(key)?.exerciseMin || 0;
-  const status = done.length
-    ? (done.some((x) => x.wid === act) ? `${tr('Done', 'Ferdig')} ✓` : `${tr('Did', 'Gjorde')}: ${esc(done.map((x) => niceName(workoutDef(x.wid)?.name || x.name || x.wid)).join(', '))} ✓`)
-    : watchMin >= 20 ? `${tr('Watch', 'Klokka')}: ${watchMin} ${tr('active min', 'aktive min')} ✓`
-    : act === 'rest' ? tr('Rest is part of growing', 'Hvile er en del av å vokse') : tr('Tap to start', 'Trykk for å starte');
-  const trainTile = `<a class="tile" href="#/train"><span class="small muted">${tr('Training today', 'Trening i dag')}</span>
-      <span class="big" style="font-size:20px">${act === 'rest' || !wk ? tr('Rest day', 'Hviledag') : esc(niceName(wk.name))}</span>
-      <span class="small soft">${act === 'rest' || !wk ? tr('Recover and refuel', 'Hvil og spis godt') : `${wk.minutes} min`}</span>
-      <span class="tiny" style="margin-top:auto;font-weight:600;color:var(--accent)">${status}</span></a>`;
-  return `<div class="grid2">${weightTile}${trainTile}</div>`;
+  const ws2 = weekStreak(key);
+  const wp = weekProgress(key);
+  const streakTile = `<a class="tile" href="#/train"><span class="small muted">${tr('Training streak', 'Treningsrekke')}</span>
+      <span class="big num">${icon('flame', 24, 'style="vertical-align:-3px;color:var(--accent)"')} ${ws2.weeks}</span>
+      <span class="small soft">${ws2.weeks === 1 ? tr('week in a row', 'uke på rad') : tr('weeks in a row', 'uker på rad')}</span>
+      <span class="tiny" style="margin-top:auto;font-weight:600;color:var(--accent)">${ws2.thisWeek ? tr('This week counts ✓', 'Denne uka teller ✓') : tr(`${Math.max(0, ws2.need - wp.done)} more ${ws2.need - wp.done === 1 ? 'day' : 'days'} this week keeps it going`, `${Math.max(0, ws2.need - wp.done)} ${ws2.need - wp.done === 1 ? 'dag' : 'dager'} til denne uka holder den i gang`)}</span></a>`;
+  return `<div class="grid2">${weightTile}${streakTile}</div>`;
 }
 
 // Sleep, pulse and movement from the Apple Watch (via the Shortcut). Only shown once connected.
@@ -244,9 +273,10 @@ export function render() {
       </div>
     </header>
     ${installNote()}
-    ${totalsCard(key)}
+    ${totalsCard(key, { quick: true })}
     <div class="log-cta"><a class="btn primary" href="#/log">${icon('plus', 20)} ${tr('Log what you ate', 'Logg det du spiste')}</a>
       <a class="icon-btn surface" href="#/log" data-act="photoLog" aria-label="${tr('Log with a photo', 'Logg med bilde')}">${icon('camera', 22)}</a></div>
+    ${trainToday()}
     <p class="cheer-line">${esc(todayLine(key))}</p>
     ${timeline(key)}
     ${ideasCard(key)}

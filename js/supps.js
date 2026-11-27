@@ -130,6 +130,13 @@ function shakeItems(x) {
   return items;
 }
 export const shakeKcal = (x) => shakeItems(x).reduce((a, i) => a + packItem(i).kcal, 0);
+export const shakeProtein = (x) => shakeItems(x).reduce((a, i) => a + (packItem(i).p || 0), 0);
+// One more, always (a second shake on a hungry day), never wrapping round to zero.
+export function addOne(id, key = dayKey()) {
+  const x = suppList().find((s) => s.id === id);
+  if (!x) return { on: false };
+  return setCount(x, countOf(id, key) + 1, key);
+}
 
 // Take one more (or, when all are taken, start over). Returns { on, all, streak, count, n }.
 export function toggleSupp(id, key = dayKey()) {

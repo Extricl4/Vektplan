@@ -1,13 +1,12 @@
 // Food for training: what to eat before and after, and honest notes on supplements.
 // Written for a sensitive, low-FODMAP stomach and for gaining weight. General info, not medical advice.
-import { hasSupp, isTicked, toggleSupp, suppCheer, suppList } from '../supps.js';
 import { S } from '../store.js';
 import { tr, L, n0, n1 } from '../i18n.js';
 import { icon, openSheet, closeSheet, plate, fodmapBadge } from '../ui.js';
 import { recipeById } from '../data/recipes.js';
 import { logRecipeSheet } from '../meals.js';
-import { myMeals, sortedMeals, logMyMeal, kcalLine } from '../mymeals.js';
-import { exName, kgFmt } from '../training.js';
+import { exName, kgFmt, weekProgress, weekStreak } from '../training.js';
+import { quickChips, proteinActions } from './proteinquick.js';
 import { esc, dayKey } from '../util.js';
 import { nav } from '../nav.js';
 import { cheer } from '../meals.js';
@@ -24,42 +23,34 @@ function recipeRow(id, act = 'logR') {
     <span class="s">${r.min} min${calm ? '' : ` · ${n0(r.kcal)} kcal`}</span></span>${icon('plus', 18, 'style="color:var(--accent)"')}</button>`;
 }
 
-function snackMine() {
-  return []; // saved meals are no longer shown (he types what he eats)
-}
 
 // Shown after a workout: a calm summary and a few easy things to eat.
 export function refuelSheet(summary) {
   if (!summary) return;
-  const mine = snackMine();
-  const ideas = ['smoothie', 'yogurt-bowl', 'pb-toast', 'eggs-toast'].filter((id) => recipeById(id)).slice(0, 3 - Math.min(1, mine.length));
   const name = S().profile.name ? `, ${esc(S().profile.name)}` : '';
-  openSheet({
-    title: tr(`Well done${name}`, `Bra jobba${name}`),
-    html: `${summary.cheer ? `<p class="h3" style="line-height:1.4">${esc(summary.cheer)}</p>` : ''}
+  const draw = () => {
+    const wp = weekProgress();
+    const ws = weekStreak();
+    return `${summary.cheer ? `<p class="h3" style="line-height:1.4">${esc(summary.cheer)}</p>` : ''}
       <div class="wstats"><div class="wstat"><span class="tiny muted">${tr('Time', 'Tid')}</span><span class="v num">${summary.minutes} min</span></div>
-        <div class="wstat"><span class="tiny muted">${tr('Sets', 'Sett')}</span><span class="v num">${summary.sets}</span></div>
-        <div class="wstat"><span class="tiny muted">${tr('Exercises', 'Øvelser')}</span><span class="v num">${summary.exercises}</span></div></div>
-      ${summary.bests?.length ? `<div class="note">${icon('flame', 18)}<div class="grow col" style="gap:4px"><b>${tr('New best', 'Ny rekord')}</b>${summary.bests.map((b) => `<span class="small">${esc(exName(b.exId))}: ${kgFmt(b.kg)} (${tr('was', 'var')} ${kgFmt(b.prev)})</span>`).join('')}</div></div>` : ''}
-      <p class="soft small" style="line-height:1.5">${tr('Your muscles grow from what you eat in the next few hours. Something small with protein is perfect, whenever you feel ready.', 'Musklene vokser av det du spiser de neste timene. Noe lite med protein er perfekt, når du føler deg klar.')}</p>
-      <div class="list">${hasSupp('protein') && !isTicked('protein') ? `<button class="item" data-act="shake"><span class="plate-mini" aria-hidden="true">${icon('pill', 18)}</span>
-        <span class="grow"><span class="t" style="display:block;font-weight:600">${tr('Protein shake', 'Proteinshake')}</span><span class="s">${tr('Tick it off and log it in one tap', 'Kryss av og logg med ett trykk')}</span></span>${icon('plus', 18, 'style="color:var(--accent)"')}</button>` : ''}${mine.map((m) => `<button class="item" data-act="logM" data-id="${m.id}"><span class="plate-mini" aria-hidden="true">${icon('heart', 18)}</span>
-        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(m.name)}</span>${kcalLine(m) ? `<span class="s">${kcalLine(m)}</span>` : ''}</span>${icon('plus', 18, 'style="color:var(--accent)"')}</button>`).join('')}
-        ${ideas.map((id) => recipeRow(id)).join('')}</div>
-      <div class="btns"><button class="btn secondary" data-act="fuel">${icon('book', 18)} ${tr('Food for training', 'Mat og trening')}</button><button class="btn primary" data-act="close">${tr('Close', 'Lukk')}</button></div>`,
+        <div class="wstat"><span class="tiny muted">${tr('Rounds', 'Runder')}</span><span class="v num">${summary.sets}</span></div>
+        <div class="wstat"><span class="tiny muted">${tr('This week', 'Denne uka')}</span><span class="v num">${wp.done}${wp.target ? `/${wp.target}` : ''}</span></div></div>
+      ${ws.weeks >= 1 ? `<div class="note">${icon('flame', 18)}<span><b>${ws.weeks} ${ws.weeks === 1 ? tr('week', 'uke') : tr('weeks in a row', 'uker på rad')}</b> ${ws.weeks === 1 ? tr('with training. That is how habits start.', 'med trening. Sånn starter vaner.') : tr('with training. Keep showing up like this.', 'med trening. Fortsett å møte opp sånn.')}</span></div>` : ''}
+      ${summary.bests?.length ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:4px"><b>${tr('New best', 'Ny rekord')}</b>${summary.bests.map((b) => `<span class="small">${esc(exName(b.exId))}: ${kgFmt(b.kg)} (${tr('was', 'var')} ${kgFmt(b.prev)})</span>`).join('')}</div></div>` : ''}
+      <p class="soft small" style="line-height:1.5">${tr('Your muscles grow from what you eat in the next few hours. Something small with protein is perfect, whenever you feel ready. One tap logs it:', 'Musklene vokser av det du spiser de neste timene. Noe lite med protein er perfekt, når du føler deg klar. Ett trykk logger det:')}</p>
+      ${quickChips()}
+      <div class="btns"><button class="btn secondary" data-act="fuel">${icon('book', 18)} ${tr('Food for training', 'Mat og trening')}</button><button class="btn primary" data-act="close">${tr('Close', 'Lukk')}</button></div>`;
+  };
+  openSheet({
+    title: tr(`Well done${name}!`, `Bra jobba${name}!`),
+    html: draw(),
     actions: {
-      shake: () => { const r = toggleSupp(suppList().find((x) => x.kind === 'protein')?.id || 'protein'); closeSheet(); toast(suppCheer(r)); },
-      logR: (el) => { closeSheet(true); logRecipeSheet(dayKey(), recipeById(el.dataset.id), null); },
-      logM: (el) => {
-        const m = myMeals().find((x) => x.id === el.dataset.id);
-        if (m) logMyMeal(dayKey(), m, null, 1);
-        closeSheet();
-        toast(cheer());
-        nav.rerender();
-      },
+      pq: (el, e, sheet) => { proteinActions.pq(el); sheet.querySelector('.col').innerHTML = draw(); },
+      pqUndo: (el, e, sheet) => { proteinActions.pqUndo(el); sheet.querySelector('.col').innerHTML = draw(); },
       close: () => closeSheet(),
       fuel: () => { closeSheet(true); nav.go('fuel'); },
     },
+    onClose: () => nav.rerender(),
   });
 }
 

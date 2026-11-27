@@ -8,6 +8,7 @@ import { nav } from '../nav.js';
 import { dayTotals, logMac, logItems, proteinGoal, proteinSuggestion } from '../nutrition.js';
 import { ideasFor } from '../ideas.js';
 import { macroBar, legend } from './charts.js';
+import { proteinBlock, quickChips, proteinActions } from './proteinquick.js';
 import { recipeById } from '../data/recipes.js';
 import { myMealById } from '../mymeals.js';
 import { amountSheet, recipeItem, mealItem, macroLine, amountText, restoreItem } from '../amount.js';
@@ -18,7 +19,7 @@ const g = (v) => `${Math.round(v)} g`;
 const bar = (v, goal) => (goal ? `<div class="mbar"><i style="width:${Math.min(100, Math.round((v / goal) * 100))}%"></i></div>` : '');
 
 // Calories and macros for a day. Calm mode shows how often you ate instead of numbers.
-export function totalsCard(key = dayKey(), { link = true } = {}) {
+export function totalsCard(key = dayKey(), { link = true, quick = false } = {}) {
   const st = S();
   const t = dayTotals(key);
   const isToday = key === dayKey();
@@ -26,23 +27,18 @@ export function totalsCard(key = dayKey(), { link = true } = {}) {
     return `<section class="card hero-today" aria-label="${tr('Eaten', 'Spist')}">
       <span class="small muted">${isToday ? tr('Today', 'I dag') : ''}</span>
       <p class="h2" style="line-height:1.3">${t.n ? tr(`You have eaten ${t.n} ${t.n === 1 ? 'time' : 'times'}${isToday ? ' today' : ''}.`, `Du har spist ${t.n} ${t.n === 1 ? 'gang' : 'ganger'}${isToday ? ' i dag' : ''}.`) : tr('Nothing logged yet. Something small is a great start.', 'Ingenting logget ennå. Noe lite er en fin start.')}</p>
+      ${quick && isToday ? `<p class="tiny muted" style="margin:2px 0 -2px">${tr('Something small with protein, in one tap:', 'Noe lite med protein, med ett trykk:')}</p>${quickChips({ key })}` : ''}
       ${link && isToday ? `<a class="link-btn small" href="#/food/diary">${tr('See the diary', 'Se dagboka')} →</a>` : ''}</section>`;
   }
   const kGoal = st.profile.goalKcal;
-  const pGoal = proteinGoal();
   return `<section class="card hero-today" aria-label="${tr('Eaten', 'Spist')}">
     <div class="row between"><span class="small muted">${isToday ? tr('Eaten today', 'Spist i dag') : tr('Eaten', 'Spist')}</span>
       ${link && isToday ? `<a class="link-btn small" href="#/food/diary">${tr('Diary', 'Dagbok')} →</a>` : ''}</div>
     <p class="kcal num"><b>${n0(t.kcal)}</b> <span>kcal${kGoal ? ` / ${n0(kGoal)}` : ''}</span></p>
     ${bar(t.kcal, kGoal)}
-    <div class="macros">
-      <div class="mac p"><span class="tiny muted">${tr('Protein', 'Protein')}</span><span class="v num">${g(t.p)}${pGoal ? `<span class="tiny muted"> / ${pGoal}</span>` : ''}</span>${bar(t.p, pGoal)}</div>
-      <div class="mac f"><span class="tiny muted">${tr('Fat', 'Fett')}</span><span class="v num">${g(t.f)}</span></div>
-      <div class="mac c"><span class="tiny muted">${tr('Carbs', 'Karbo')}</span><span class="v num">${g(t.c)}</span></div>
-    </div>
-    ${t.p + t.f + t.c > 0 ? `${macroBar([t.p, t.f, t.c], 8)}${legend()}` : ''}
+    ${proteinBlock(t, { key, quick })}
+    <p class="small muted">${tr('Fat', 'Fett')} <b class="num" style="color:var(--ink)">${g(t.f)}</b> · ${tr('Carbs', 'Karbo')} <b class="num" style="color:var(--ink)">${g(t.c)}</b></p>
     ${t.unknown ? `<p class="tiny muted">${tr(`${t.unknown} ${t.unknown === 1 ? 'entry has' : 'entries have'} no protein info (older or own foods).`, `${t.unknown} ${t.unknown === 1 ? 'oppføring mangler' : 'oppføringer mangler'} proteininfo (eldre eller egne).`)}</p>` : ''}
-    ${!pGoal && isToday && proteinSuggestion() && !st.prefs.hideProteinTip ? `<button class="link-btn small" data-act="goalP" style="align-self:flex-start">${icon('sparkle', 14)} ${tr('Set a protein goal (optional)', 'Sett et proteinmål (valgfritt)')}</button>` : ''}
   </section>`;
 }
 
@@ -185,4 +181,5 @@ export const diaryActions = {
   entry: (el) => entrySheet(el.dataset.k || dayKey(), el.dataset.id),
   idea: (el) => ideaTap(el),
   goalP: () => proteinGoalSheet(),
+  ...proteinActions,
 };

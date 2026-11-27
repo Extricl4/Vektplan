@@ -4,7 +4,7 @@ import { S, mutate } from './store.js';
 import { LIB, GROUPS, GROUP_ORDER, PLACES, weighted, kgStep } from './data/exercises.js';
 import { WORKOUTS, WEEK_PLAN, OTHER_ACTIVITIES } from './data/workouts.js';
 import { L, tr } from './i18n.js';
-import { dayKey, weekday, dayNum, startOfWeek, uid } from './util.js';
+import { dayKey, weekday, dayNum, startOfWeek, uid, addDays } from './util.js';
 import { SLOTS, slotIds, slotPick, FOCUS, FOCUS_ORDER, PROGRAMS, REPS, EASIER, HARDER, normFocus } from './data/programs.js';
 
 const N = (en, nb) => ({ en, nb });
@@ -401,6 +401,41 @@ export const goalText = (e) => {
   if (x?.mode === 'time') return `${r} · ${e.reps} ${tr('sec', 'sek')}`;
   return `${r} · ${e.lo && e.hi ? `${e.lo}–${e.hi}` : e.reps} ${tr('times', 'ganger')}`;
 };
+
+// ---------- Motivation: this week and weeks in a row ----------
+// A workout that counts as "training" for the week: a strength session, or any own training / walk of 10+ min.
+const counts = (w) => (w.own ? (w.minutes || 0) >= 10 : (w.sets || 0) > 0 || workoutDef(w.wid)?.kind === 'strength' || (w.minutes || 0) >= 10);
+// Planned strength sessions this week, and how many trainings you did (own ones count too).
+export function weekProgress(key = dayKey()) {
+  const start = startOfWeek(key);
+  let target = 0;
+  for (let i = 0; i < 7; i++) if (workoutDef(plannedFor(addDays(start, i)))?.kind === 'strength') target++;
+  const days = new Set(S().workouts.filter((w) => w.date >= start && w.date <= addDays(start, 6) && counts(w)).map((w) => w.date));
+  return { target, done: days.size };
+}
+// The next planned strength day after `from` (for rest days: "next: Friday").
+export function nextTraining(from = dayKey()) {
+  for (let i = 1; i <= 7; i++) {
+    const k = addDays(from, i);
+    const act = plannedFor(k);
+    const def = workoutDef(act);
+    if (def && def.kind === 'strength') return { k, act, def, i };
+  }
+  return null;
+}
+// Weeks in a row with at least 2 training days (or your plan's number, if lower). This week counts once it's reached.
+export function weekStreak(key = dayKey()) {
+  const { target } = weekProgress(key);
+  const need = Math.max(1, Math.min(2, target || 2));
+  const daysIn = (start) => new Set(S().workouts.filter((w) => w.date >= start && w.date <= addDays(start, 6) && counts(w)).map((w) => w.date)).size;
+  const start = startOfWeek(key);
+  let n = daysIn(start) >= need ? 1 : 0;
+  for (let i = 1; i < 105; i++) {
+    if (daysIn(addDays(start, -7 * i)) >= need) n++;
+    else break;
+  }
+  return { weeks: n, need, thisWeek: daysIn(start) >= need };
+}
 
 // ---------- Your history per exercise ----------
 export function lastLog(exId, beforeTs = Infinity) {
