@@ -386,6 +386,22 @@ export function shortName(id) {
   return first.length > 7 ? first.slice(0, 6) + '.' : first;
 }
 
+// "Fokus: Biceps + Kjerne" → "Biceps og kjerne". Other names stay as they are.
+export function niceName(name) {
+  const m = /^(Focus|Fokus):\s*(.*)$/.exec(name || '');
+  if (!m) return name || '';
+  const parts = m[2].split(/\s*\+\s*/).map((p, i) => (i ? p.charAt(0).toLowerCase() + p.slice(1) : p));
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ${tr('and', 'og')} ${parts[parts.length - 1]}` : parts[0];
+}
+
+// "3 rounds · 8–12 times" in plain words (a round = a set).
+export const goalText = (e) => {
+  const x = getEx(e.id);
+  const r = e.sets === 1 ? tr('1 round', '1 runde') : tr(`${e.sets} rounds`, `${e.sets} runder`);
+  if (x?.mode === 'time') return `${r} · ${e.reps} ${tr('sec', 'sek')}`;
+  return `${r} · ${e.lo && e.hi ? `${e.lo}–${e.hi}` : e.reps} ${tr('times', 'ganger')}`;
+};
+
 // ---------- Your history per exercise ----------
 export function lastLog(exId, beforeTs = Infinity) {
   const ws = S().workouts;

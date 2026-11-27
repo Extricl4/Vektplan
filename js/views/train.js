@@ -1,289 +1,359 @@
-// Train: your plan for the week, today's session, your sessions, food tips and history.
+// Train, made simple: what to do today (one big Start button), your week as a plain list,
+// your own extra training, history, and a few things to learn. No plan yet? Three questions make one.
 import { S, mutate } from '../store.js';
-import { plannedActivity, workoutsOn, weekSummary } from '../planner.js';
-import { OTHER_ACTIVITIES } from '../data/workouts.js';
-import { PLACES, PLACE_ORDER } from '../data/exercises.js';
-import { PROGRAMS, PROGRAM_ORDER, FOCUS, normFocus } from '../data/programs.js';
-import { equipSheet } from './program.js';
+import { plannedActivity, weekSummary } from '../planner.js';
+import { PLACES, PLACE_ORDER, EQUIP } from '../data/exercises.js';
+import { PROGRAMS, FOCUS, FOCUS_ORDER, normFocus } from '../data/programs.js';
+import { equipChips, toggleGear } from './program.js';
 import { howToSheet, needsLine } from './howto.js';
-import { tr, L, dayShort, shortDate, n0, n1 } from '../i18n.js';
+import { tr, L, dayShort, shortDate } from '../i18n.js';
 import { icon, tabbar, openSheet, closeSheet, toast } from '../ui.js';
 import { esc, dayKey, addDays, startOfWeek, parseKey } from '../util.js';
 import { nav } from '../nav.js';
-import { hasHealth, healthDay, fmtSleep, syncedToday } from '../health.js';
-import { syncHealth } from './health.js';
-import { shortcutURL, markPending } from '../health.js';
+import { healthDay, fmtSleep } from '../health.js';
 import {
-  programReady, training, sessions, workoutDef, activityName, shortName, exName, groupsText, lastLog, LEVELS, saveWorkout, kgFmt,
-  currentPlace, setTodayPlace, getEx, allowedEquip, planWorkoutsOn, ownWorkoutsOn, ownIcon,
+  programReady, training, sessions, workoutDef, activityName, exName, groupsText, lastLog, saveWorkout, kgFmt,
+  currentPlace, setTodayPlace, allowedEquip, planWorkoutsOn, ownWorkoutsOn, ownIcon, buildProgram, applyProgram, niceName, goalText,
 } from '../training.js';
-import { EQUIP } from '../data/exercises.js';
 
-export { activityName, saveWorkout };
+export { activityName, saveWorkout, niceName, goalText };
 
 const iconFor = (id) => (id === 'walk' ? 'walk' : id === 'stretch' ? 'stretch' : id === 'rest' ? 'bed' : 'dumbbell');
 
-function weekStrip() {
-  const start = startOfWeek(dayKey());
-  const today = dayKey();
-  return `<section class="card tight" style="padding:14px 8px" aria-label="${tr('This week', 'Denne uka')}">
-    <div class="week">${Array.from({ length: 7 }, (_, i) => {
-      const k = addDays(start, i);
-      const act = plannedActivity(k);
-      const done = planWorkoutsOn(k).length > 0;
-      const extra = ownWorkoutsOn(k).length > 0;
-      const watch = (healthDay(k)?.exerciseMin || 0) >= 20;
-      const own = !!workoutDef(act)?.own;
-      const ic = act === 'rest' ? '–' : own ? icon('dumbbell', 16) : act === 'strengthA' ? '<b>A</b>' : act === 'strengthB' ? '<b>B</b>' : icon(iconFor(act), 16);
-      return `<a class="col" href="${act !== 'rest' ? `#/workout/${act}` : '#/train'}" style="align-items:center;gap:6px;text-decoration:none;color:inherit;min-width:0">
-        <span class="tiny ${k === today ? '' : 'muted'}" style="font-weight:${k === today ? 700 : 500};color:${k === today ? 'var(--accent)' : ''}">${dayShort(parseKey(k))}</span>
-        <span style="position:relative;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-          ${done ? 'background:var(--accent-fill);color:var(--accent-ink)' : k === today ? 'border:2px solid var(--accent-line);color:var(--ink)' : act === 'rest' ? 'background:var(--surface2);color:var(--muted)' : 'border:2px solid var(--line);color:var(--soft)'}">
-          ${done ? icon('check', 16, 'stroke-width="3"') : ic}${extra ? `<i class="odot" title="${tr('Own training', 'Egen trening')}"></i>` : watch && !done ? '<i class="wdot" title="Apple Watch"></i>' : ''}</span>
-        <span class="tiny muted" style="font-size:10px;max-width:46px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(shortName(act))}</span></a>`;
-    }).join('')}</div>
-    ${hasHealth() || S().workouts.some((w) => w.own) ? `<p class="tiny muted center" style="margin-top:4px">${S().workouts.some((w) => w.own) ? `<i class="odot inline"></i> ${tr('own training', 'egen trening')}` : ''}${hasHealth() && S().workouts.some((w) => w.own) ? ' · ' : ''}${hasHealth() ? `<i class="wdot inline"></i> ${tr('20+ active min on your Watch', '20+ aktive min på klokka')}` : ''}</p>` : ''}
-  </section>`;
-}
-
-export const goalText = (e) => {
-  const x = getEx(e.id);
-  if (x?.mode === 'time') return `${e.sets} × ${e.reps} s`;
-  return `${e.sets} × ${e.lo && e.hi ? `${e.lo}–${e.hi}` : e.reps}`;
-};
-
-function exercisePreview(def) {
-  return `<div class="list">${def.ex.slice(0, 8).map((e) => {
+function exList(def, { numbers = true } = {}) {
+  // "extra" only makes sense when some exercises are extra (not on a day that is all focus).
+  const mark = def.ex.some((e) => e.focus) && !def.ex.every((e) => e.focus);
+  return `<ol class="ex-steps">${def.ex.map((e, i) => {
     const last = lastLog(e.id);
     const top = last ? Math.max(0, ...last.sets.map((x) => x.kg || 0)) : 0;
-    return `<button class="item" data-act="how" data-id="${esc(e.id)}" style="justify-content:space-between;gap:10px"><span class="howrow"><span class="q" aria-hidden="true">?</span><span style="min-width:0">${e.focus ? '<span class="dot" style="background:var(--accent-line);display:inline-block;margin-right:6px;vertical-align:1px"></span>' : ''}${esc(exName(e.id))}</span></span>
-      <span class="small muted num" style="white-space:nowrap">${goalText(e)}${top ? ` · ${kgFmt(top)}` : ''}</span></button>`;
-  }).join('')}</div>`;
+    return `<li><button class="ex-step" data-act="how" data-id="${esc(e.id)}">
+      ${numbers ? `<span class="n" aria-hidden="true">${i + 1}</span>` : ''}
+      <span class="grow" style="min-width:0"><span class="t">${esc(exName(e.id))}${mark && e.focus ? ` <span class="badge accent" style="font-size:10px;padding:1px 7px;vertical-align:1px">${tr('extra', 'ekstra')}</span>` : ''}</span>
+        <span class="s">${goalText(e)}${top ? ` · ${tr('last time', 'sist')} ${kgFmt(top)}` : ''}</span></span>
+      <span class="q" aria-label="${tr('How to do it', 'Slik gjør du')}">?</span></button></li>`;
+  }).join('')}</ol>`;
 }
 
-// Where are you today? Switching changes the exercises to fit that place's equipment.
-function placeRow() {
+const DAY_FULL = (k) => {
+  const s = parseKey(k).toLocaleDateString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { weekday: 'long' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+// The next planned training day after today (to show on rest days).
+function nextSession(from = dayKey()) {
+  for (let i = 1; i <= 7; i++) {
+    const k = addDays(from, i);
+    const act = plannedActivity(k);
+    const def = workoutDef(act);
+    if (def && def.kind === 'strength') return { k, act, def, i };
+  }
+  return null;
+}
+
+function placeLine() {
   const place = currentPlace();
   const gear = allowedEquip(place).filter((e) => e !== 'none');
   const all = Object.keys(EQUIP).filter((e) => e !== 'none').every((e) => gear.includes(e));
-  return `<div class="col" style="gap:6px"><span class="small muted">${tr('Where are you today?', 'Hvor er du i dag?')}</span>
-    <div class="seg">${PLACE_ORDER.map((p) => `<button aria-pressed="${place === p}" data-act="place" data-v="${p}">${esc(L(PLACES[p].name))}</button>`).join('')}</div>
-    <button class="link-btn small" data-act="equip" style="align-self:flex-start;text-align:left">${icon('dumbbell', 14)} ${all ? tr('All equipment', 'Alt utstyr') : gear.length ? esc(gear.map((e) => L(EQUIP[e])).join(', ')) : tr('Body weight only', 'Bare kroppsvekt')} · ${tr('change', 'endre')}</button></div>`;
+  return `<button class="place-line" data-act="placeSheet">${icon('home', 15)} <b>${esc(L(PLACES[place].name))}</b>
+    <span class="muted">· ${all ? tr('all equipment', 'alt utstyr') : gear.length ? esc(gear.map((e) => L(EQUIP[e])).join(', ').toLowerCase()) : tr('body weight only', 'bare kroppsvekt')}</span>
+    <span class="link">${tr('Change', 'Endre')}</span></button>`;
 }
 
+// ---------- Today ----------
 function todayCard() {
   const key = dayKey();
   const act = plannedActivity(key);
   const done = planWorkoutsOn(key);
   const own = ownWorkoutsOn(key);
   const ownLine = own.length ? `<p class="small" style="color:var(--accent);font-weight:600">${icon('check', 14, 'style="vertical-align:-2px"')} ${tr('Also logged today', 'Også logget i dag')}: ${esc(own.map((w) => `${w.name} · ${w.minutes} min`).join(', '))}</p>` : '';
+  const head = `<p class="eyebrow" style="margin:0">${tr('Today', 'I dag')} · ${esc(S().prefs.lang === 'nb' ? DAY_FULL(key).toLowerCase() : DAY_FULL(key))}</p>`;
+
   if (done.length) {
-    return `<section class="card soft"><div class="row">${icon('check', 22)}<p class="h3">${tr('Training done today', 'Trening gjort i dag')}: ${esc(done.map((w) => activityName(w.wid, w.name)).join(', '))}</p></div>${ownLine}
-      <p class="small soft">${tr('Nice work. Something to eat in the next few hours helps your muscles grow.', 'Godt jobba. Litt mat de neste timene hjelper musklene å vokse.')}</p>
-      <a class="link-btn" href="#/fuel">${tr('Ideas for after training', 'Forslag til etter trening')} →</a></section>`;
+    return `<section class="card hero-train done">
+      ${head}
+      <div class="row" style="gap:12px"><span class="big-check" aria-hidden="true">${icon('check', 26, 'stroke-width="3"')}</span>
+        <div><h2 class="h1" style="font-size:24px">${tr('Done for today', 'Ferdig for i dag')}</h2>
+        <p class="small soft">${esc(done.map((w) => niceName(activityName(w.wid, w.name))).join(', '))} · ${done.reduce((a, w) => a + (w.minutes || 0), 0)} min</p></div></div>
+      ${ownLine}
+      <p class="small soft" style="line-height:1.5">${tr('Great job. Your muscles grow now, while you rest and eat. A meal or a shake in the next hours helps.', 'Bra jobba. Nå vokser musklene, mens du hviler og spiser. Et måltid eller en shake de neste timene hjelper.')}</p>
+      <a class="btn secondary" href="#/fuel">${icon('leaf', 18)} ${tr('What to eat after training', 'Hva du kan spise etter trening')}</a>
+    </section>`;
   }
-  if (act === 'rest') {
-    return `<section class="card"><span class="badge accent" style="align-self:flex-start">${tr('Today', 'I dag')}</span>
-      <h2 class="h1" style="font-size:24px">${tr('Rest day', 'Hviledag')}</h2>${ownLine}
-      <p class="small soft">${tr('Muscles grow while you rest and eat. Rest is part of the plan, not a break from it.', 'Muskler vokser mens du hviler og spiser. Hvile er en del av planen, ikke en pause fra den.')}</p>
-      <div class="btns"><a class="btn secondary" href="#/workout/walk">${icon('walk', 18)} ${tr('Short walk', 'Kort gåtur')}</a><a class="btn secondary" href="#/workout/stretch">${icon('stretch', 18)} ${tr('Stretch', 'Tøy')}</a></div></section>`;
+
+  if (act === 'rest' || !workoutDef(act)) {
+    const nx = nextSession(key);
+    return `<section class="card hero-train">
+      ${head}
+      <h2 class="h1" style="font-size:26px">${tr('Rest day', 'Hviledag')}</h2>
+      ${ownLine}
+      <p class="small soft" style="line-height:1.5">${tr('No training planned today. Muscles grow on rest days, so this is part of the plan.', 'Ingen trening i dag. Muskler vokser på hviledager, så dette er en del av planen.')}</p>
+      ${nx ? `<div class="next-up">${icon('calendar', 18)}<span class="grow"><span class="tiny muted" style="display:block">${tr('Next training', 'Neste trening')}</span>
+        <b>${nx.i === 1 ? tr('Tomorrow', 'I morgen') : esc(DAY_FULL(nx.k))}: ${esc(niceName(nx.def.name))}</b></span></div>` : ''}
+      <p class="tiny muted">${tr('Want to move a little anyway? Optional:', 'Lyst til å bevege deg litt likevel? Helt valgfritt:')}</p>
+      <div class="btns"><a class="btn secondary" href="#/workout/walk">${icon('walk', 18)} ${tr('Walk', 'Gåtur')}</a><a class="btn secondary" href="#/workout/stretch">${icon('stretch', 18)} ${tr('Stretch', 'Tøying')}</a></div>
+    </section>`;
   }
+
   const def = workoutDef(act);
-  if (!def) return '';
-  return `<section class="card" aria-label="${tr("Today's workout", 'Dagens økt')}">
-    <div class="row between"><span class="badge accent">${tr('Today', 'I dag')}</span>
-      ${def.own ? `<a class="link-btn small" href="#/session/${def.id}">${icon('pencil', 14)} ${tr('Edit', 'Endre')}</a>` : `<span class="icon-btn" style="background:var(--accent-soft);color:var(--accent)">${icon(iconFor(act))}</span>`}</div>
-    <div><h2 class="h1" style="font-size:24px">${esc(def.name)}</h2><p class="small muted">${esc(def.sub)} · ${tr('about', 'ca.')} ${def.minutes} min</p></div>${ownLine}
-    ${def.kind === 'strength' && def.own ? placeRow() : ''}
-    ${def.ex.length ? `<p class="small soft" style="line-height:1.45">${icon('dumbbell', 14, 'style="vertical-align:-2px"')} <b>${tr('You need', 'Du trenger')}:</b> ${esc(needsLine(def.ex.map((e) => e.id)))}</p>
-      <p class="tiny muted">${tr('Tap an exercise to see how to do it.', 'Trykk på en øvelse for å se hvordan den gjøres.')}</p>${exercisePreview(def)}` : ''}
-    <div class="btns"><a class="btn primary" href="#/workout/${act}">${icon('play', 18)} ${tr('Start', 'Start')}</a>
-      ${def.kind === 'strength' ? `<a class="btn secondary" href="#/workout/${act}/light">${tr('Light day', 'Lett dag')}</a>` : act !== 'walk' ? `<a class="btn secondary" href="#/workout/walk">${tr('Walk instead', 'Gå i stedet')}</a>` : `<button class="btn secondary" data-act="quickWalk">${tr('Log a walk', 'Logg en gåtur')}</button>`}</div>
-    ${def.kind === 'strength' ? `<p class="tiny muted">${tr('Light day = 1 set of each. Tired, queasy or short on food? It still counts.', 'Lett dag = 1 sett av hver. Sliten, kvalm eller lite mat i dag? Det teller likevel.')}</p>` : ''}
-    <p class="small muted" style="line-height:1.5">${def.kind === 'strength' ? tr('Have a small snack 1–2 hours before. Stomach rough? A walk or a stretch still counts.', 'Spis noe lite 1–2 timer før. Dårlig mage? En gåtur eller tøying teller også.') : tr('Stomach rough today? Any movement counts.', 'Dårlig mage i dag? All bevegelse teller.')}</p>
+  const h = healthDay(key) || {};
+  const tired = h.sleepMin != null && h.sleepMin < 360 && !h.sleepGuess && def.kind === 'strength';
+  if (def.kind !== 'strength') {
+    return `<section class="card hero-train">
+      ${head}
+      <h2 class="h1" style="font-size:26px">${esc(def.name)}</h2>
+      <p class="small soft">${esc(def.sub)} · ${tr('about', 'ca.')} ${def.minutes} min</p>
+      ${ownLine}
+      <a class="btn primary big-start" href="#/workout/${act}">${icon('play', 20)} ${tr('Start', 'Start')}</a>
+      <p class="tiny muted">${tr('A light day in your plan. Easy on the stomach.', 'En lett dag i planen din. Snill mot magen.')}</p>
+    </section>`;
+  }
+  return `<section class="card hero-train" aria-label="${tr("Today's training", 'Dagens trening')}">
+    ${head}
+    <div><h2 class="h1" style="font-size:26px">${esc(niceName(def.name))}</h2>
+      <p class="small soft">${def.ex.length} ${tr('exercises', 'øvelser')} · ${tr('about', 'ca.')} ${def.minutes} min</p></div>
+    ${ownLine}
+    <a class="btn primary big-start" href="#/workout/${act}">${icon('play', 20)} ${tr('Start training', 'Start treningen')}</a>
+    ${tired ? `<div class="note amber">${icon('bed', 18)}<span>${tr(`Short night (${fmtSleep(h.sleepMin)}). The short version below is just as good today.`, `Kort natt (${fmtSleep(h.sleepMin)}). Kortversjonen under er like bra i dag.`)}</span></div>` : ''}
+    <div class="col" style="gap:6px">
+      <p class="label" style="margin:0">${tr("What you'll do", 'Dette skal du gjøre')}</p>
+      ${exList(def)}
+      <p class="tiny muted">${tr('Tap an exercise to see how. A round = do the movement that many times, then rest.', 'Trykk på en øvelse for å se hvordan. En runde = gjør bevegelsen så mange ganger, så pause.')}</p>
+    </div>
+    <p class="small" style="line-height:1.45">${icon('dumbbell', 15, 'style="vertical-align:-3px"')} <b>${tr('You need', 'Du trenger')}:</b> ${esc(needsLine(def.ex.map((e) => e.id)))}</p>
+    ${def.own ? placeLine() : ''}
+    <a class="link-btn small" href="#/workout/${act}/light" style="align-self:flex-start">${tr('Low on energy? Do the short version (1 round of each)', 'Lite energi? Ta kortversjonen (1 runde av hver)')} →</a>
   </section>`;
 }
 
-// Training outside the plan: "arms for 25 min", with the muscles you ticked.
-function ownCard() {
-  return `<a class="card tight link" href="#/trainlog" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit">
-    <span class="plate-mini" style="background:var(--accent-soft);color:var(--accent)" aria-hidden="true">${icon('plus', 20)}</span>
-    <span class="grow"><span style="display:block;font-weight:600">${tr('Log your own training', 'Logg egen trening')}</span>
-    <span class="small muted">${tr('Did something else? Arms for 25 min, a run, football… Separate from your plan.', 'Gjort noe annet? Armer i 25 min, løping, fotball… Utenom planen din.')}</span></span>${icon('chevR', 18)}</a>`;
+// ---------- The week as a plain list ----------
+function weekCard() {
+  const start = startOfWeek(dayKey());
+  const today = dayKey();
+  let planned = 0;
+  let doneN = 0;
+  const rows = Array.from({ length: 7 }, (_, i) => {
+    const k = addDays(start, i);
+    const act = plannedActivity(k);
+    const def = workoutDef(act);
+    const done = planWorkoutsOn(k).length > 0;
+    const own = ownWorkoutsOn(k);
+    const isStrength = def?.kind === 'strength';
+    if (isStrength) { planned++; if (done) doneN++; }
+    const past = k < today;
+    const label = act === 'rest' || !def ? tr('Rest', 'Hvile') : isStrength ? niceName(def.name) : `${def.name} ${tr('(optional)', '(valgfritt)')}`;
+    const sub = isStrength ? `${def.ex.length} ${tr('exercises', 'øvelser')} · ~${def.minutes} min` : '';
+    const state = done ? `<span class="wk-state ok">${icon('check', 14, 'stroke-width="3"')} ${tr('Done', 'Gjort')}</span>`
+      : k === today && def ? `<span class="wk-state now">${tr('Today', 'I dag')}</span>` : '';
+    const ownTxt = own.length ? `<span class="wk-own">+ ${esc(own.map((w) => w.name).join(', '))}</span>` : '';
+    const tag = def ? 'button' : 'div';
+    return `<${tag} class="wk-row ${k === today ? 'today' : ''} ${isStrength ? 'train' : 'light'} ${done ? 'done' : ''} ${past && !done ? 'past' : ''}" ${def ? `data-act="dayView" data-k="${k}"` : ''}>
+      <span class="wk-day"><b>${esc(dayShort(parseKey(k)))}</b><span>${parseKey(k).getDate()}.</span></span>
+      <span class="wk-ic" aria-hidden="true">${done ? icon('check', 15, 'stroke-width="3"') : icon(isStrength ? 'dumbbell' : iconFor(act), 15)}</span>
+      <span class="grow" style="min-width:0"><span class="wk-name">${esc(label)}</span>${sub ? `<span class="wk-sub">${sub}</span>` : ''}${ownTxt}</span>
+      ${state}${def ? icon('chevR', 16) : ''}</${tag}>`;
+  }).join('');
+  return `<section class="card" aria-label="${tr('Your week', 'Uka di')}">
+    <div class="row between"><h2 class="h3">${tr('Your week', 'Uka di')}</h2>
+      ${planned ? `<span class="small muted">${doneN} ${tr('of', 'av')} ${planned} ${tr('done', 'gjort')}</span>` : ''}</div>
+    ${planned ? `<div class="wk-bar" aria-hidden="true">${Array.from({ length: planned }, (_, i) => `<i class="${i < doneN ? 'on' : ''}"></i>`).join('')}</div>` : ''}
+    <div class="wk-list">${rows}</div>
+    <p class="tiny muted">${tr('Missed a day? No problem, just do the next one. You can also do any day now: tap it.', 'Gikk glipp av en dag? Helt greit, bare ta den neste. Du kan også ta en hvilken som helst dag nå: trykk på den.')}</p>
+  </section>`;
+}
+
+// ---------- No plan yet: three questions ----------
+let wiz = null;
+const wizCfg = () => {
+  const id = wiz.days === 2 ? 'start2' : wiz.days === 4 ? 'ul4' : wiz.focus.length ? 'focus3' : 'full3';
+  return { id, place: wiz.place, focus: wiz.focus, days: PROGRAMS[id].days, level: 'gentle', reps: 'grow', rest: 'mix' };
+};
+
+function setupCard() {
+  if (!wiz) wiz = { days: 2, place: training().place || 'home', focus: [] };
+  const plan = buildProgram(wizCfg());
+  const byId = Object.fromEntries(plan.sessions.map((s) => [s.id, s]));
+  const DAYS = [[2, tr('2 days', '2 dager'), tr('Best start', 'Beste start')], [3, tr('3 days', '3 dager'), ''], [4, tr('4 days', '4 dager'), tr('When eating is steady', 'Når maten går fint')]];
+  return `<section class="card hero-train">
+    <p class="eyebrow" style="margin:0">${tr('Your training plan', 'Treningsplanen din')}</p>
+    <h2 class="h1" style="font-size:24px">${tr("Let's make your plan", 'La oss lage planen din')}</h2>
+    <p class="small soft" style="line-height:1.5">${tr('Three quick questions. You can change everything later.', 'Tre raske spørsmål. Du kan endre alt senere.')}</p>
+
+    <div class="q-block"><p class="q-title"><span class="q-n">1</span>${tr('How many days a week?', 'Hvor mange dager i uka?')}</p>
+      <div class="opt-row">${DAYS.map(([n, l, s]) => `<button class="opt" aria-pressed="${wiz.days === n}" data-act="wDays" data-v="${n}"><b>${l}</b>${s ? `<span>${s}</span>` : ''}</button>`).join('')}</div></div>
+
+    <div class="q-block"><p class="q-title"><span class="q-n">2</span>${tr('Where do you train?', 'Hvor trener du?')}</p>
+      <div class="seg">${PLACE_ORDER.map((p) => `<button aria-pressed="${wiz.place === p}" data-act="wPlace" data-v="${p}">${esc(L(PLACES[p].name))}</button>`).join('')}</div>
+      ${wiz.place === 'home' ? `<p class="tiny muted" style="margin:2px 0 0">${tr('What do you have at home? Nothing is fine too.', 'Hva har du hjemme? Ingenting er også helt fint.')}</p>${equipChips('home')}` : ''}</div>
+
+    <div class="q-block"><p class="q-title"><span class="q-n">3</span>${tr('Any muscles you want most? (optional)', 'Noen muskler du vil ha mest? (valgfritt)')}</p>
+      <div class="chips">${FOCUS_ORDER.map((f) => `<button class="chip solid" aria-pressed="${wiz.focus.includes(f)}" data-act="wFocus" data-v="${f}">${wiz.focus.includes(f) ? icon('check', 13) + ' ' : ''}${esc(L(FOCUS[f].name))}</button>`).join('')}</div></div>
+
+    <div class="plan-preview"><p class="label" style="margin:0">${tr('Your plan', 'Planen din')}</p>
+      ${plan.days.map((d) => {
+        const s = byId[plan.schedule[d]];
+        const name = new Date(2024, 0, 1 + d).toLocaleDateString(S().prefs.lang === 'nb' ? 'nb-NO' : 'en-GB', { weekday: 'long' });
+        return `<div class="pp-row"><b>${esc(name.charAt(0).toUpperCase() + name.slice(1))}</b><span>${esc(niceName(s.name))}</span><span class="muted">${s.ex.length} ${tr('exercises', 'øvelser')}</span></div>`;
+      }).join('')}
+      <p class="tiny muted" style="margin:0">${tr('The other days are rest days.', 'De andre dagene er hviledager.')}</p></div>
+
+    <button class="btn primary big-start" data-act="wUse">${icon('check', 20)} ${tr('Use this plan', 'Bruk denne planen')}</button>
+    <a class="link-btn small center" href="#/workout/strengthA">${tr('Just want to train right now? Start a gentle full-body session', 'Vil du bare trene nå? Start en rolig helkroppsøkt')}</a>
+  </section>`;
+}
+
+// ---------- Own training, history, learn, plan ----------
+function ownButton() {
+  return `<a class="own-btn" href="#/trainlog">${icon('plus', 20)}<span class="grow"><b>${tr('Trained something else?', 'Trent noe annet?')}</b>
+    <span>${tr('Log it here: arms for 25 min, a run, football…', 'Logg det her: armer i 25 min, løping, fotball…')}</span></span>${icon('chevR', 18)}</a>`;
+}
+
+let showAll = false;
+function historyCard() {
+  const all = S().workouts.slice().reverse();
+  if (!all.length) return '';
+  const list = all.slice(0, showAll ? 30 : 4);
+  const sum = weekSummary();
+  return `<section class="card">
+    <div class="row between"><h2 class="h3">${tr('What you have done', 'Det du har gjort')}</h2>
+      <span class="small muted">${tr('This week', 'Denne uka')}: ${sum.minutes} min</span></div>
+    <div class="list">${list.map((w) => `<button class="item" data-act="editW" data-id="${w.id}">
+      <span class="plate-mini" style="width:36px;height:36px;${w.own ? 'background:var(--accent-soft);color:var(--accent)' : ''}" aria-hidden="true">${icon(w.own ? ownIcon(w.type) : iconFor(w.wid), 17)}</span>
+      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(w.own ? w.name : niceName(activityName(w.wid, w.name)))}${w.own ? ` <span class="badge" style="font-size:10px;padding:2px 7px;vertical-align:1px">${tr('own', 'egen')}</span>` : ''}</span>
+      <span class="s">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${w.sets === 1 ? tr('round', 'runde') : tr('rounds', 'runder')}` : ''}${w.own && w.muscles?.length ? ` · ${esc(w.muscles.map((m) => L(FOCUS[m]?.name || { en: m, nb: m })).join(', '))}` : ''}</span></span>${icon('chevR', 16)}</button>`).join('')}</div>
+    ${all.length > 4 ? `<button class="link-btn small" data-act="more">${showAll ? tr('Show less', 'Vis mindre') : tr(`Show all (${all.length})`, `Vis alle (${all.length})`)}</button>` : ''}
+  </section>`;
+}
+
+function learnCard() {
+  const row = (href, act, ic, t, s) => `<${href ? `a href="${href}"` : `button data-act="${act}"`} class="learn-row">
+    <span class="plate-mini" aria-hidden="true">${icon(ic, 18)}</span><span class="grow"><b>${t}</b><span>${s}</span></span>${icon('chevR', 16)}</${href ? 'a' : 'button'}>`;
+  return `<section class="card tight">
+    <h2 class="h3">${tr('Good to know', 'Greit å vite')}</h2>
+    ${row(null, 'rules', 'sparkle', tr('How muscle grows', 'Slik vokser muskler'), tr('The 4 things that matter, in 1 minute', 'De 4 tingene som betyr noe, på 1 minutt'))}
+    ${row('#/guide', null, 'book', tr('How to do every exercise', 'Slik gjør du hver øvelse'), tr('Steps, tips and what you need', 'Steg, tips og hva du trenger'))}
+    ${row('#/fuel', null, 'leaf', tr('Food and training', 'Mat og trening'), tr('Before and after, protein powder, creatine', 'Før og etter, proteinpulver, kreatin'))}
+  </section>`;
 }
 
 function planCard() {
-  if (programReady()) return '';
-  return `<div class="section-title"><h2 class="h2">${tr('Pick a plan', 'Velg en plan')}</h2></div>
-    <p class="small soft" style="margin:-6px 4px 0;line-height:1.45">${tr('Made for building muscle as a beginner. Works at home or the gym, with whatever equipment you have.', 'Laget for å bygge muskler som nybegynner. Fungerer hjemme eller på senter, med det utstyret du har.')}</p>
-    ${PROGRAM_ORDER.map((id, i) => {
-      const p = PROGRAMS[id];
-      return `<a class="card tight link" href="#/program/${id}" style="text-decoration:none;color:inherit;${i === 0 ? 'border:1.5px solid var(--accent-line)' : ''}">
-        <div class="row between"><span class="h3">${esc(L(p.name))}</span><span class="badge ${i === 0 ? 'accent' : ''}">${esc(L(p.tag))}</span></div>
-        <span class="small soft" style="line-height:1.45">${esc(L(p.sub))}</span>
-        <span class="tiny muted">${p.days.length} ${tr('days a week', 'dager i uka')} · ${p.sessions.length} ${tr('different sessions', 'ulike økter')} ${icon('chevR', 14, 'style="vertical-align:-3px"')}</span></a>`;
-    }).join('')}
-    <a class="link-btn" style="align-self:center" href="#/plan/new">${tr('Build your own from scratch (advanced)', 'Lag din egen helt fra bunnen (avansert)')}</a>
-    <p class="tiny muted center">${tr('Until you pick one, the built-in gentle plan below is used.', 'Til du velger en, brukes den innebygde rolige planen under.')}</p>`;
-}
-
-// The few rules that actually make muscle grow, in plain words.
-function rulesCard() {
-  return `<details class="card tight rules">
-    <summary class="row between" style="cursor:pointer;list-style:none"><span class="h3 row" style="gap:8px">${icon('sparkle', 18)} ${tr('How muscle grows', 'Slik vokser muskler')}</span>${icon('chevD', 18)}</summary>
-    <ol class="rules-list">
-      <li><b>${tr('Close to hard.', 'Nesten tungt.')}</b> ${tr('The last 2 reps of a set should feel heavy, but your form stays clean.', 'De to siste repetisjonene i et sett skal kjennes tunge, men teknikken holder seg fin.')}</li>
-      <li><b>${tr('A little more over time.', 'Litt mer over tid.')}</b> ${tr('When you reach the top of the range on every set, go a bit heavier or pick the harder version. The app tells you when.', 'Når du når toppen av området i alle settene, gå litt tyngre eller velg den tyngre varianten. Appen sier fra når.')}</li>
-      <li><b>${tr('Food and sleep build it.', 'Mat og søvn bygger det.')}</b> ${tr('Muscle is built after training. A snack before and a meal or shake after helps a lot.', 'Muskler bygges etter treningen. Noe lite før og et måltid eller en shake etter hjelper mye.')}</li>
-      <li><b>${tr('Show up.', 'Møt opp.')}</b> ${tr('2 sessions every week beats 5 one week and none the next. Light days count.', '2 økter hver uke slår 5 én uke og ingen den neste. Lette dager teller.')}</li>
-    </ol></details>`;
-}
-
-function fuelCard() {
-  return `<a class="card tight link" href="#/fuel" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit">
-    <span class="plate-mini" aria-hidden="true">${icon('leaf', 18)}</span>
-    <span class="grow"><span style="display:block;font-weight:600">${tr('Food for training', 'Mat og trening')}</span>
-    <span class="small muted">${tr('What to eat before and after, protein powder, creatine, pre-workout', 'Hva du spiser før og etter, proteinpulver, kreatin, pre-workout')}</span></span>${icon('chevR', 18)}</a>`;
-}
-
-// What the Apple Watch saw today, or a gentle way in if it isn't connected yet.
-function watchCard() {
-  if (!hasHealth()) {
-    return `<a class="card tight link" href="#/health" style="flex-direction:row;align-items:center;gap:12px">
-      <span class="plate-mini" aria-hidden="true">${icon('watch', 18)}</span>
-      <span class="grow"><span style="display:block;font-weight:600">${tr('Connect your Apple Watch', 'Koble til Apple Watch')}</span>
-      <span class="small muted">${tr('See exercise minutes, active calories, steps and sleep here', 'Se treningsminutter, aktive kalorier, skritt og søvn her')}</span></span>${icon('chevR', 18)}</a>`;
-  }
-  const calm = S().prefs.calm;
-  const key = dayKey();
-  const h = healthDay(key) || {};
-  const act = plannedActivity(key);
-  const def = workoutDef(act);
-  const tired = h.sleepMin != null && h.sleepMin < 360 && !h.sleepGuess && def?.kind === 'strength' && !workoutsOn(key).length;
-  const sum = weekSummary(key);
-  const bits = [
-    h.exerciseMin != null ? `<b class="num">${h.exerciseMin}</b> ${tr('exercise min', 'treningsmin')}` : '',
-    !calm && h.activeKcal != null ? `<b class="num">${n0(h.activeKcal)}</b> kcal` : '',
-    h.steps != null ? `<b class="num">${n0(h.steps)}</b> ${tr('steps', 'skritt')}` : '',
-  ].filter(Boolean);
-  return `<section class="card tight">
-    <div class="row between"><h2 class="h3 row" style="gap:8px">${icon('watch', 19)} ${tr('Watch today', 'Klokka i dag')}</h2>
-      <a class="link-btn row" style="gap:5px;text-decoration:none" href="${esc(shortcutURL())}" data-act="runShortcut">${icon('refresh', 16)} ${tr('Sync', 'Hent')}</a></div>
-    <p class="small">${bits.length ? bits.join(' · ') : `<span class="muted">${syncedToday() ? tr('Nothing recorded yet today.', 'Ingenting registrert ennå i dag.') : tr('Not synced today yet.', 'Ikke hentet i dag ennå.')}</span>`}</p>
-    ${sum.watchMin ? `<p class="tiny muted">${tr('This week on the Watch', 'Denne uka på klokka')}: <b class="num">${sum.watchMin}</b> ${tr('exercise min', 'treningsmin')}${!calm && sum.watchKcal ? ` · <b class="num">${n0(sum.watchKcal)}</b> ${tr('active kcal', 'aktive kcal')}` : ''}</p>` : ''}
-    ${!calm && (h.activeKcal || 0) >= 400 ? `<p class="tiny soft">${tr('Active day: an extra snack helps you keep gaining.', 'Aktiv dag: et ekstra mellommåltid hjelper deg å fortsette å gå opp.')}</p>` : ''}
-    ${tired ? `<div class="note amber">${icon('bed', 18)}<span>${tr(`Short night (${fmtSleep(h.sleepMin)}). If you feel tired, a walk or a stretch today counts just as much.`, `Kort natt (${fmtSleep(h.sleepMin)}). Er du sliten, teller en gåtur eller tøying like mye i dag.`)}</span></div>` : ''}
-  </section>`;
-}
-
-function mySessions() {
   if (!programReady()) return '';
   const t = training();
-  return `<div class="section-title"><h2 class="h2">${tr('Your sessions', 'Øktene dine')}</h2><a class="link-btn" href="#/plan">${icon('calendar', 16)} ${tr('Days', 'Dager')}</a></div>
-    ${t.program ? `<a class="btn secondary small" href="#/program/${t.program.id}" style="align-self:flex-start">${icon('sliders', 16)} ${tr('Change plan, focus or equipment', 'Endre plan, fokus eller utstyr')}</a>` : ''}
-    <div class="grid2">${sessions().map((s) => {
-      const def = workoutDef(s.id);
-      return `<a class="tile" href="#/session/${s.id}">
-        <span class="plate-mini" style="width:38px;height:38px" aria-hidden="true">${icon('dumbbell', 18)}</span>
-        <span class="h3" style="margin-top:4px">${esc(s.name)}</span><span class="tiny muted">${esc(groupsText(s.groups))}</span>
-        <span class="tiny muted">${s.ex.length} ${tr('exercises', 'øvelser')} · ~${def?.minutes || 20} min</span></a>`;
-    }).join('')}</div>`;
-}
-
-function others() {
-  const items = programReady()
-    ? [['stretch', 'stretch'], ['walk', 'walk']]
-    : [['strengthA', 'dumbbell'], ['strengthB', 'dumbbell'], ['stretch', 'stretch'], ['walk', 'walk']];
-  return `<div class="section-title"><h2 class="h2">${tr('Something else', 'Noe annet')}</h2></div>
-    <div class="grid2">${items.map(([id, ic]) => {
-      const w = workoutDef(id);
-      return `<a class="tile" href="#/workout/${id}">
-      <span class="plate-mini" style="width:38px;height:38px" aria-hidden="true">${icon(ic, 20)}</span>
-      <span class="h3" style="margin-top:4px">${esc(w.name)}</span><span class="tiny muted">${esc(w.sub)} · ${w.minutes} min</span></a>`;
-    }).join('')}</div>
-    <a class="btn outline" href="#/trainlog">${icon('plus', 18)} ${tr('Log your own training', 'Logg egen trening')}</a>`;
-}
-
-function history() {
-  const list = S().workouts.slice(-8).reverse();
-  const sum = weekSummary();
-  return `<section class="card">
-    <div class="row between"><h2 class="h3">${tr('History', 'Historikk')}</h2>
-      <span class="small muted">${tr('This week', 'Denne uka')}: ${sum.sessions} ${sum.sessions === 1 ? tr('session', 'økt') : tr('sessions', 'økter')} · ${sum.minutes} min</span></div>
-    ${list.length ? `<div class="list">${list.map((w) => `<button class="item" data-act="editW" data-id="${w.id}">
-      <span class="plate-mini" style="width:36px;height:36px;${w.own ? 'background:var(--accent-soft);color:var(--accent)' : ''}" aria-hidden="true">${icon(w.own ? ownIcon(w.type) : iconFor(w.wid), 17)}</span>
-      <span class="grow" style="min-width:0"><span class="t" style="display:block;font-weight:500">${esc(w.own ? w.name : activityName(w.wid, w.name))}${w.own ? ` <span class="badge" style="font-size:10px;padding:2px 7px;vertical-align:1px">${tr('own', 'egen')}</span>` : ''}</span>
-      <span class="s">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${tr('sets', 'sett')}` : ''}${w.own && w.muscles?.length ? ` · ${esc(w.muscles.map((m) => L(FOCUS[m]?.name || { en: m, nb: m })).join(', '))}` : ''}</span></span>${icon('chevR', 16)}</button>`).join('')}</div>`
-      : `<p class="small muted">${tr('Your workouts show up here. The first one is the hardest.', 'Øktene dine dukker opp her. Den første er den tyngste.')}</p>`}
+  const prog = t.program && PROGRAMS[t.program.id];
+  const focus = normFocus(t.program?.focus).map((f) => L(FOCUS[f].name).toLowerCase());
+  const days = (t.days || Object.keys(t.schedule || {})).length;
+  return `<section class="card tight">
+    <div class="row between"><h2 class="h3">${tr('Your plan', 'Planen din')}</h2>
+      <a class="btn small secondary" href="${prog ? `#/program/${t.program.id}` : '#/plan'}">${icon('sliders', 15)} ${tr('Change', 'Endre')}</a></div>
+    <p class="small soft" style="line-height:1.5">${esc(prog ? L(prog.name) : tr('Your own plan', 'Din egen plan'))} · ${days} ${tr('days a week', 'dager i uka')} · ${esc(L(PLACES[t.place || 'home'].name).toLowerCase())}${focus.length ? ` · ${tr('extra', 'ekstra')} ${esc(focus.join(', '))}` : ''}</p>
+    <details class="sess-more"><summary class="link-btn small">${tr('Change exercises in a session', 'Endre øvelser i en økt')}</summary>
+      <div class="list">${sessions().map((s) => `<a class="item" href="#/session/${s.id}" style="text-decoration:none;color:inherit">
+        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(niceName(s.name))}</span><span class="s">${esc(groupsText(s.groups))}</span></span>${icon('pencil', 16)}</a>`).join('')}</div>
+      <a class="link-btn small" href="#/plan">${tr('Move days around', 'Flytt dager')}</a></details>
   </section>`;
-}
-
-function minutesSheet(title, onSave, preset = 20) {
-  let mins = preset;
-  let actId = 'walk';
-  const draw = (withActs) => `${withActs ? `<div class="chips">${OTHER_ACTIVITIES.map((a) => `<button class="chip solid" aria-pressed="${a.id === actId}" data-act="a" data-id="${a.id}">${esc(L(a.name))}</button>`).join('')}</div>` : ''}
-    <div class="row between"><span class="h3">${tr('Minutes', 'Minutter')}</span>
-    <div class="stepper"><button data-act="m" data-d="-5" aria-label="${tr('Less', 'Mindre')}">−</button><span class="v num">${mins} min</span><button data-act="m" data-d="5" aria-label="${tr('More', 'Mer')}">+</button></div></div>
-    <button class="btn primary" data-act="save">${tr('Save', 'Lagre')}</button>`;
-  return (withActs) => openSheet({
-    title,
-    html: draw(withActs),
-    actions: {
-      a: (b, e, sheet) => { actId = b.dataset.id; sheet.querySelector('.col').innerHTML = draw(withActs); },
-      m: (b, e, sheet) => { mins = Math.max(5, Math.min(300, mins + Number(b.dataset.d))); sheet.querySelector('.col').innerHTML = draw(withActs); },
-      save: () => { onSave(mins, actId); closeSheet(); },
-    },
-  });
 }
 
 export function render() {
   const active = S().activeWorkout;
-  const t = training();
-  const prog = t.program && PROGRAMS[t.program.id];
-  const focus = normFocus(t.program?.focus).map((f) => L(FOCUS[f].name));
-  const eyebrow = programReady()
-    ? [prog ? L(prog.name) : '', esc(L(LEVELS[t.level]?.name || LEVELS.gentle.name)), focus.length ? `${tr('focus', 'fokus')}: ${esc(focus.join(', ').toLowerCase())}` : ''].filter(Boolean).join(' · ')
-    : tr('Gentle beginner plan', 'Rolig nybegynnerplan');
-  const settingsHref = prog ? `#/program/${t.program.id}` : programReady() ? '#/plan' : '#/program/start2';
+  const ready = programReady();
   return `<div class="screen">
     <div class="blob b1"></div>
-    <header class="head"><div class="titles"><p class="eyebrow">${eyebrow}</p>
+    <header class="head"><div class="titles"><p class="eyebrow">${ready ? tr('Your plan, one day at a time', 'Planen din, én dag om gangen') : tr('Get stronger, gently', 'Bli sterkere, rolig')}</p>
       <h1 class="h1">${tr('Train', 'Trening')}</h1></div>
-      <a class="icon-btn surface" href="${settingsHref}" aria-label="${tr('Your plan', 'Planen din')}">${icon('sliders')}</a></header>
-    ${active ? `<a class="banner" href="#/workout/${active.id}" style="text-decoration:none">${icon('play', 20)}<span class="grow">${tr('Workout in progress', 'Økt pågår')}: ${esc(activityName(active.id))}. ${tr('Tap to continue.', 'Trykk for å fortsette.')}</span></a>` : ''}
-    ${programReady() ? todayCard() : ''}
-    ${ownCard()}
-    ${weekStrip()}
+      ${ready ? `<a class="icon-btn surface" href="${training().program ? `#/program/${training().program.id}` : '#/plan'}" aria-label="${tr('Change plan', 'Endre plan')}">${icon('sliders')}</a>` : ''}</header>
+    ${active ? `<a class="banner" href="#/workout/${active.id}" style="text-decoration:none">${icon('play', 20)}<span class="grow">${tr('You have a session going', 'Du har en økt i gang')}: ${esc(niceName(activityName(active.id)))}. ${tr('Tap to continue.', 'Trykk for å fortsette.')}</span></a>` : ''}
+    ${ready ? todayCard() : setupCard()}
+    ${ownButton()}
+    ${ready ? weekCard() : ''}
+    ${historyCard()}
+    ${learnCard()}
     ${planCard()}
-    ${programReady() ? '' : todayCard()}
-    ${rulesCard()}
-    <a class="card tight link" href="#/guide" style="flex-direction:row;align-items:center;gap:12px;text-decoration:none;color:inherit">
-      <span class="plate-mini" aria-hidden="true">${icon('book', 18)}</span>
-      <span class="grow"><span style="display:block;font-weight:600">${tr('Exercise guide', 'Øvelsesguide')}</span>
-      <span class="small muted">${tr('How to do every exercise, and what you need', 'Hvordan du gjør hver øvelse, og hva du trenger')}</span></span>${icon('chevR', 18)}</a>
-    ${fuelCard()}
-    ${watchCard()}
-    ${mySessions()}
-    ${others()}
-    ${history()}
   </div>${tabbar('train')}`;
 }
 
+function rulesSheet() {
+  openSheet({
+    title: tr('How muscle grows', 'Slik vokser muskler'),
+    html: `<ol class="rules-list">
+      <li><b>${tr('Close to hard.', 'Nesten tungt.')}</b> ${tr('The last 2 times in a round should feel heavy, but you still do the movement nicely.', 'De to siste gangene i en runde skal kjennes tunge, men du gjør fortsatt bevegelsen fint.')}</li>
+      <li><b>${tr('A little more over time.', 'Litt mer over tid.')}</b> ${tr('When you manage the top number in every round, take a bit more weight next time. The app tells you when.', 'Når du klarer det høyeste tallet i alle rundene, ta litt mer vekt neste gang. Appen sier fra når.')}</li>
+      <li><b>${tr('Food and sleep build it.', 'Mat og søvn bygger det.')}</b> ${tr('Muscle is built after training. A snack before and a meal or shake after helps a lot.', 'Muskler bygges etter treningen. Noe lite før og et måltid eller en shake etter hjelper mye.')}</li>
+      <li><b>${tr('Show up.', 'Møt opp.')}</b> ${tr('2 sessions every week beats 5 one week and none the next. The short version counts.', '2 økter hver uke slår 5 én uke og ingen den neste. Kortversjonen teller.')}</li>
+    </ol>
+    <p class="small soft" style="line-height:1.5"><b>${tr('Words:', 'Ord:')}</b> ${tr('A round (also called a set) = doing the movement a number of times in a row, then a short rest. "3 rounds · 8–12 times" = do it 8 to 12 times, rest, three times over.', 'En runde (også kalt et sett) = gjøre bevegelsen et antall ganger på rad, så en kort pause. «3 runder · 8–12 ganger» = gjør den 8 til 12 ganger, pause, tre ganger.')}</p>
+    <button class="btn primary" data-act="ok">${tr('Got it', 'Skjønner')}</button>`,
+    actions: { ok: () => closeSheet() },
+  });
+}
+
+function placeSheet() {
+  const draw = () => {
+    const place = currentPlace();
+    return `<p class="small soft" style="line-height:1.45">${tr("Where are you today? The exercises change to fit what's there.", 'Hvor er du i dag? Øvelsene tilpasses det som finnes der.')}</p>
+      <div class="seg">${PLACE_ORDER.map((p) => `<button aria-pressed="${place === p}" data-act="pl" data-v="${p}">${esc(L(PLACES[p].name))}</button>`).join('')}</div>
+      <p class="label">${tr(`Equipment at ${L(PLACES[place].name).toLowerCase()}`, `Utstyr ${place === 'home' ? 'hjemme' : 'på senteret'}`)}</p>
+      ${equipChips(place)}
+      <button class="btn primary" data-act="done">${tr('Done', 'Ferdig')}</button>`;
+  };
+  openSheet({
+    title: tr('Place and equipment', 'Sted og utstyr'),
+    html: draw(),
+    actions: {
+      pl: (el, e, sheet) => { setTodayPlace(el.dataset.v); sheet.querySelector('.col').innerHTML = draw(); },
+      gear: (el, e, sheet) => { toggleGear(el.dataset.p, el.dataset.e); sheet.querySelector('.col').innerHTML = draw(); },
+      done: () => closeSheet(),
+    },
+    onClose: () => nav.rerender(),
+  });
+}
+
+// Any day of the week: what it is, and start it now if you like.
+function daySheet(k) {
+  const act = plannedActivity(k);
+  const def = workoutDef(act);
+  if (!def) return;
+  const done = planWorkoutsOn(k);
+  const today = k === dayKey();
+  openSheet({
+    title: esc(niceName(def.name)),
+    html: `<p class="small muted">${esc(DAY_FULL(k))} ${shortDate(parseKey(k))}${def.ex.length ? ` · ${def.ex.length} ${tr('exercises', 'øvelser')}` : ''} · ${tr('about', 'ca.')} ${def.minutes} min</p>
+      ${done.length ? `<div class="note">${icon('check', 18)}<span>${tr('Done', 'Gjort')}: ${done.map((w) => `${w.minutes} min`).join(', ')}</span></div>` : ''}
+      ${def.ex.length ? exList(def) : `<p class="small soft">${esc(def.sub)}</p>`}
+      ${def.ex.length ? `<p class="small" style="line-height:1.45">${icon('dumbbell', 15, 'style="vertical-align:-3px"')} <b>${tr('You need', 'Du trenger')}:</b> ${esc(needsLine(def.ex.map((e) => e.id)))}</p>` : ''}
+      <button class="btn primary" data-act="go">${icon('play', 18)} ${today ? tr('Start', 'Start') : tr('Do this one now', 'Ta denne nå')}</button>
+      ${!today && !done.length ? `<p class="tiny muted center">${tr('It counts for today.', 'Den teller for i dag.')}</p>` : ''}`,
+    actions: {
+      how: (el) => howToSheet(el.dataset.id),
+      go: () => { closeSheet(); nav.go(`workout/${act}`); },
+    },
+  });
+}
+
 export const actions = {
-  place: (el) => { setTodayPlace(el.dataset.v); toast(tr('Exercises updated for today.', 'Øvelsene er tilpasset i dag.'), 1600); nav.rerender(); },
-  equip: () => equipSheet(),
   how: (el) => howToSheet(el.dataset.id),
-  syncHealth: () => syncHealth(),
-  runShortcut: () => { markPending(); location.href = shortcutURL(); },
-  quickWalk: () => minutesSheet(tr('Log a walk', 'Logg en gåtur'), (m) => { saveWorkout('walk', m); toast(tr('Walk logged. Nice.', 'Gåtur logget. Fint.')); nav.rerender(); })(false),
+  placeSheet: () => placeSheet(),
+  rules: () => rulesSheet(),
+  dayView: (el) => daySheet(el.dataset.k),
+  more: () => { showAll = !showAll; nav.rerender(); },
+  wDays: (el) => { wiz.days = Number(el.dataset.v); nav.rerender(); },
+  wPlace: (el) => { wiz.place = el.dataset.v; nav.rerender(); },
+  wFocus: (el) => { const f = el.dataset.v; wiz.focus = wiz.focus.includes(f) ? wiz.focus.filter((x) => x !== f) : [...wiz.focus, f]; nav.rerender(); },
+  gear: (el) => { toggleGear(el.dataset.p, el.dataset.e); nav.rerender(); },
+  wUse: () => {
+    applyProgram(wizCfg());
+    mutate((s) => { s.training.place = wiz.place; });
+    wiz = null;
+    toast(tr('Your plan is ready. Today is at the top.', 'Planen din er klar. Dagens trening står øverst.'), 2600);
+    nav.scrollTo(0);
+    nav.rerender();
+  },
   editW: (el) => {
     const w = S().workouts.find((x) => x.id === el.dataset.id);
     if (!w) return;
     if (w.own) { nav.go(`trainlog/${w.id}`); return; }
     const log = w.log || {};
     openSheet({
-      title: esc(activityName(w.wid, w.name)),
-      html: `<p class="small muted">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${tr('sets', 'sett')}` : ''}</p>
+      title: esc(niceName(activityName(w.wid, w.name))),
+      html: `<p class="small muted">${shortDate(parseKey(w.date))} · ${w.minutes} min${w.sets ? ` · ${w.sets} ${w.sets === 1 ? tr('round', 'runde') : tr('rounds', 'runder')}` : ''}</p>
         ${Object.keys(log).length ? `<div class="list">${Object.entries(log).map(([exId, sets]) => `<div class="item" style="justify-content:space-between;gap:10px"><span>${esc(exName(exId))}</span>
           <span class="small muted num" style="text-align:right">${sets.map((x) => `${x.r}${x.kg ? ` × ${kgFmt(x.kg)}` : ''}`).join(' · ')}</span></div>`).join('')}</div>` : ''}
         <button class="btn danger" data-act="del">${icon('trash', 18)} ${tr('Delete', 'Slett')}</button>`,
@@ -291,3 +361,4 @@ export const actions = {
     });
   },
 };
+

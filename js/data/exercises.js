@@ -22,7 +22,7 @@ export const EQUIP = {
   barbell: N('Barbell', 'Vektstang'),
   machine: N('Machine', 'Maskin'),
   cable: N('Cable', 'Kabel'),
-  bar: N('Pull-up bar', 'Stang'),
+  bar: N('Pull-up bar', 'Pull-up-stang'),
   kettlebell: N('Kettlebell', 'Kettlebell'),
   band: N('Resistance bands', 'Treningsstrikk'),
 };

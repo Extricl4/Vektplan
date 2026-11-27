@@ -1,9 +1,15 @@
 {
-  "version": "1.6.0",
-  "date": "2026-11-26",
-  "notes": "Log your own training outside the plan: what you did (arms, a run, football…), how long, now or earlier, and tick the muscles and exercises. It shows in history and trends but never changes your plan.",
-  "notes_nb": "Logg egen trening utenom planen: hva du gjorde (armer, løping, fotball…), hvor lenge, nå eller tidligere, og kryss av muskler og øvelser. Den vises i historikken og utviklingen, men endrer aldri planen din.",
+  "version": "1.7.0",
+  "date": "2026-11-27",
+  "notes": "New, simpler Train tab: today's training at the top with one Start button and a numbered list, your week as a plain list, and a 3-question setup if you have no plan yet. Plain words: rounds and times instead of sets and reps.",
+  "notes_nb": "Ny og enklere Trening-fane: dagens trening øverst med én Start-knapp og en nummerert liste, uka di som en enkel liste, og 3 spørsmål for å lage plan hvis du ikke har en. Enkle ord: runder og ganger i stedet for sett og reps.",
   "history": [
+    {
+      "version": "1.6.0",
+      "date": "2026-11-26",
+      "notes": "Log your own training outside the plan: what you did (arms, a run, football…), how long, now or earlier, and tick the muscles and exercises. It shows in history and trends but never changes your plan.",
+      "notes_nb": "Logg egen trening utenom planen: hva du gjorde (armer, løping, fotball…), hvor lenge, nå eller tidligere, og kryss av muskler og øvelser. Den vises i historikken og utviklingen, men endrer aldri planen din."
+    },
     {
       "version": "1.5.1",
       "date": "2026-11-26",

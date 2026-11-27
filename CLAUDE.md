@@ -64,6 +64,12 @@ Every tab screen must end with `${tabbar('<tab>')}` after its `.screen`.
   ("arms for 25 min"). Saved via `saveOwnWorkout` as a workout with `wid: 'own', own: true, type, muscles, exercises, otherEx,
   effort, note`. It counts for history/trends/encouragement but NEVER as the planned session: use `planWorkoutsOn` for plan
   status and `ownWorkoutsOn` for the extras (week strip shows them as a blue dot). Types are `OWN_TYPES` in `js/training.js`.
+- Train tab (`js/views/train.js`, rebuilt in 1.7 because he found it confusing): no plan → a 3-question setup card
+  (days 2/3/4, home/gym + equipment, optional muscles → start2 / full3 / focus3 / ul4 via `applyProgram`). With a plan:
+  ONE today card (big Start, numbered exercise list, what you need, place line, short version link), a "trained something
+  else?" button, the week as a plain 7-row list (tap a day → sheet to see/start it), history, "good to know", plan summary.
+  Plain words everywhere: "rounds" and "times" instead of sets/reps (`goalText`), `niceName()` turns "Fokus: Biceps + Kjerne"
+  into "Biceps og kjerne". No guilt: missed days are just dimmed, never labelled. Keep it this simple.
 - Programs: start2, focus3 (full body + a focus day for his chosen muscles, default biceps + core), full3, ul4.
   Focus muscles: chest, back, shoulders, biceps, triceps, legs, glutes, core (old "arms" → biceps + triceps via `normFocus`).
 - How-to for exercises: `js/data/howto.js` (what you need, steps split by "|", a tip) and `js/views/howto.js`

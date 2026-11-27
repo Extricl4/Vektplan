@@ -4,7 +4,7 @@ import { tr, L, n0, n1, greeting, longDate, minutesLeft, kindName } from '../i18
 import { icon, ring, mealsBar, fodmapBadge, sparkline, plate, toast, sheetOpen, tabbar } from '../ui.js';
 import { eatSheet, smallerSheet, skipCurrent, editLogSheet, recipeShort, swapSheet } from '../meals.js';
 import { sortedMeals, mealsFor, kcalLine } from '../mymeals.js';
-import { workoutDef } from '../training.js';
+import { workoutDef, niceName } from '../training.js';
 import { WORDS } from '../data/words.js';
 import { esc, dayKey, nowMinutes, clock, dayNum, isIOS, isStandalone } from '../util.js';
 import { nav } from '../nav.js';
@@ -130,11 +130,11 @@ function tiles() {
   const wk = workoutDef(act);
   const watchMin = healthDay(key)?.exerciseMin || 0;
   const status = done.length
-    ? (done.some((x) => x.wid === act) ? `${tr('Done', 'Ferdig')} ✓` : `${tr('Did', 'Gjorde')}: ${esc(done.map((x) => workoutDef(x.wid)?.name || x.name || x.wid).join(', '))} ✓`)
+    ? (done.some((x) => x.wid === act) ? `${tr('Done', 'Ferdig')} ✓` : `${tr('Did', 'Gjorde')}: ${esc(done.map((x) => niceName(workoutDef(x.wid)?.name || x.name || x.wid)).join(', '))} ✓`)
     : watchMin >= 20 ? `${tr('Watch', 'Klokka')}: ${watchMin} ${tr('active min', 'aktive min')} ✓`
     : act === 'rest' ? tr('Rest is part of growing', 'Hvile er en del av å vokse') : tr('Tap to start', 'Trykk for å starte');
   const trainTile = `<a class="tile" href="#/train"><span class="small muted">${tr('Training today', 'Trening i dag')}</span>
-      <span class="big" style="font-size:20px">${act === 'rest' || !wk ? tr('Rest day', 'Hviledag') : esc(wk.name)}</span>
+      <span class="big" style="font-size:20px">${act === 'rest' || !wk ? tr('Rest day', 'Hviledag') : esc(niceName(wk.name))}</span>
       <span class="small soft">${act === 'rest' || !wk ? tr('Recover and refuel', 'Hvil og spis godt') : `${wk.minutes} min`}</span>
       <span class="tiny" style="margin-top:auto;font-weight:600;color:var(--accent)">${status}</span></a>`;
   return `<div class="grid2">${weightTile}${trainTile}</div>`;

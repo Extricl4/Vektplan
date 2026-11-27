@@ -7,7 +7,7 @@ import { nav } from '../nav.js';
 import { PLACES, PLACE_ORDER, EQUIP, EQUIP_ORDER } from '../data/exercises.js';
 import { PROGRAMS, PROGRAM_ORDER, FOCUS, FOCUS_ORDER, REPS, normFocus } from '../data/programs.js';
 import { howToSheet, needsLine } from './howto.js';
-import { training, programReady, LEVELS, buildProgram, applyProgram, allowedEquip, setEquip, exName, getEx } from '../training.js';
+import { training, programReady, LEVELS, buildProgram, applyProgram, allowedEquip, setEquip, exName, niceName, goalText } from '../training.js';
 
 const WD = () => Array.from({ length: 7 }, (_, i) => dayShort(parseKey(addDays(startOfWeek(dayKey()), i))));
 let cfg = null;
@@ -65,15 +65,14 @@ function preview() {
   const wd = WD();
   const daysOf = (sid) => Object.entries(plan.schedule).filter(([, v]) => v === sid).map(([d]) => wd[d]).join(', ');
   return `<div class="col" style="gap:10px">${plan.sessions.map((s) => `<section class="card tight">
-      <div class="row between"><h3 class="h3">${esc(s.name)}</h3><span class="small muted">${esc(daysOf(s.id))}</span></div>
+      <div class="row between"><h3 class="h3">${esc(niceName(s.name))}</h3><span class="small muted">${esc(daysOf(s.id))}</span></div>
       <div class="list">${s.ex.map((e) => {
-        const x = getEx(e.id);
-        const goal = x?.mode === 'time' ? `${e.sets} × ${e.reps} s` : `${e.sets} × ${e.lo && e.hi ? `${e.lo}–${e.hi}` : e.reps}`;
+        const goal = goalText(e);
         return `<button class="item" data-act="how" data-id="${esc(e.id)}" style="gap:10px;padding:10px 0">${e.focus ? `<span class="dot" style="background:var(--accent-line)" title="${tr('Focus', 'Fokus')}"></span>` : '<span class="dot" style="background:var(--surface2)"></span>'}
           <span class="grow" style="min-width:0">${esc(exName(e.id))}</span><span class="small muted num" style="white-space:nowrap">${goal}</span><span class="q" style="flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:grid;place-items:center" aria-hidden="true">?</span></button>`;
       }).join('')}</div>
       <p class="tiny soft">${icon('dumbbell', 13, 'style="vertical-align:-2px"')} ${tr('You need', 'Du trenger')}: ${esc(needsLine(s.ex.map((e) => e.id)))}</p></section>`).join('')}
-    ${cfg.focus.length ? `<p class="tiny muted">${tr('Blue dot = focus muscle: an extra exercise and one more set.', 'Blå prikk = fokusmuskel: en ekstra øvelse og ett sett til.')}</p>` : ''}</div>`;
+    ${cfg.focus.length ? `<p class="tiny muted">${tr('Blue dot = extra for the muscles you picked.', 'Blå prikk = ekstra for musklene du valgte.')}</p>` : ''}</div>`;
 }
 
 export function render() {
@@ -110,19 +109,20 @@ export function render() {
       ${cfg.focus.length > 2 ? `<p class="tiny" style="color:var(--amber)">${tr('Many focus muscles make sessions longer, and the extras get shared out. Fewer often grows more.', 'Mange fokusmuskler gir lengre økter, og ekstraøvelsene må deles. Færre gir ofte mer vekst.')}</p>` : ''}
     </section>
 
-    <section class="card">
+    <details class="card more-opts">
+      <summary class="row between"><span class="h3">${tr('More choices', 'Flere valg')}</span><span class="small muted">${esc(L(LEVELS[cfg.level]?.name || LEVELS.gentle.name))} · ${esc(L(REPS[cfg.reps]?.name || REPS.grow.name))}</span>${icon('chevD', 18)}</summary>
       <h2 class="h3">${tr('How hard?', 'Hvor hardt?')}</h2>
       <div class="col">${Object.entries(LEVELS).map(([k, v]) => choice('level', k, cfg.level === k, esc(L(v.name)), esc(L(v.sub)), k === 'gentle' ? ` <span class="badge accent" style="margin-left:6px">${tr('While eating little', 'Mens du spiser lite')}</span>` : '')).join('')}</div>
-      <h2 class="h3" style="margin-top:6px">${tr('Reps', 'Repetisjoner')}</h2>
+      <h2 class="h3" style="margin-top:6px">${tr('Times in a row (reps)', 'Ganger på rad (reps)')}</h2>
       <div class="col">${Object.entries(REPS).map(([k, v]) => choice('reps', k, cfg.reps === k, esc(L(v.name)), esc(L(v.sub)))).join('')}</div>
       <h2 class="h3" style="margin-top:6px">${tr('Rest days', 'Hviledager')}</h2>
       <div class="seg"><button aria-pressed="${cfg.rest !== 'none'}" data-act="rest" data-v="mix">${tr('A walk or a stretch', 'En gåtur eller tøying')}</button><button aria-pressed="${cfg.rest === 'none'}" data-act="rest" data-v="none">${tr('Just rest', 'Bare hvile')}</button></div>
-    </section>
+    </details>
 
-    <div class="section-title"><h2 class="h2">${tr('Your sessions', 'Øktene dine')}</h2></div>
+    <div class="section-title"><h2 class="h2">${tr('What each day looks like', 'Slik ser hver dag ut')}</h2></div>
     ${preview()}
     <button class="btn primary" data-act="use" style="min-height:56px">${icon('check', 18)} ${tr('Use this plan', 'Bruk denne planen')}</button>
-    <p class="tiny muted center" style="line-height:1.5">${tr('You can change any exercise, set or day afterwards.', 'Du kan endre hver øvelse, sett og dag etterpå.')}</p>
+    <p class="tiny muted center" style="line-height:1.5">${tr('You can change any exercise or day afterwards.', 'Du kan endre hver øvelse og dag etterpå.')}</p>
     <a class="link-btn" style="align-self:center" href="#/plan/new">${tr('Or build one from scratch (advanced)', 'Eller lag en helt selv (avansert)')}</a>
   </div>`;
 }

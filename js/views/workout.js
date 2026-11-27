@@ -3,7 +3,7 @@
 import { S, mutate } from '../store.js';
 import { tr, L, n1, shortDate } from '../i18n.js';
 import { icon, toast, confirmSheet, openSheet, closeSheet } from '../ui.js';
-import { workoutDef, getEx, exName, groupName, lastLog, progressHint, alternatives, restSeconds, saveWorkout, activityName, newBests, kgFmt, currentPlace, setTodayPlace, resolveList, easierOf, harderOf } from '../training.js';
+import { niceName, goalText, workoutDef, getEx, exName, groupName, lastLog, progressHint, alternatives, restSeconds, saveWorkout, activityName, newBests, kgFmt, currentPlace, setTodayPlace, resolveList, easierOf, harderOf } from '../training.js';
 import { PLACES, PLACE_ORDER } from '../data/exercises.js';
 import { workoutCheer } from '../encourage.js';
 import { howToSheet, needsLine } from './howto.js';
@@ -110,7 +110,7 @@ function walkView(a) {
       <p id="walk-time" class="num" style="font-size:56px;font-weight:700;letter-spacing:-0.03em">${mmss(walkElapsed(a))}</p>
       <div class="btns" style="width:100%">
         <button class="btn ${running ? 'secondary' : 'primary'}" data-act="walkToggle">${icon(running ? 'pause' : 'play', 18)} ${running ? tr('Pause', 'Pause') : walkElapsed(a) ? tr('Continue', 'Fortsett') : tr('Start', 'Start')}</button>
-        <button class="btn secondary" data-act="walkDone" ${!running && walkElapsed(a) < 1000 ? 'disabled' : ''}>${icon('check', 18)} ${tr('Finish', 'Ferdig')}</button></div>
+        <button class="btn secondary" data-act="walkDone" ${!running && walkElapsed(a) < 1000 ? 'disabled' : ''}>${icon('check', 18)} ${tr('Finish training', 'Fullfør treningen')}</button></div>
     </section>
     <p class="small muted center">${tr('The timer keeps going if you lock your phone.', 'Tiden går videre selv om du låser telefonen.')}</p>
   </div>`;
@@ -127,7 +127,7 @@ function lastTimeLine(exId, isTime) {
   const kgs = last.sets.map((x) => x.kg || 0);
   const top = Math.max(0, ...kgs);
   const when = last.date === dayKey() ? tr('earlier today', 'tidligere i dag') : shortDate(parseKey(last.date));
-  return `<p class="small soft">${icon('clock', 14, 'style="vertical-align:-2px"')} ${tr('Last time', 'Sist')} (${when}): <b class="num">${reps}</b> ${isTime ? 's' : tr('reps', 'reps')}${top ? ` · ${tr('up to', 'opptil')} <b class="num">${kgFmt(top)}</b>` : ''}</p>`;
+  return `<p class="small soft">${icon('clock', 14, 'style="vertical-align:-2px"')} ${tr('Last time', 'Sist')} (${when}): <b class="num">${reps}</b> ${isTime ? tr('sec', 'sek') : tr('times', 'ganger')}${top ? ` · ${tr('with', 'med')} <b class="num">${kgFmt(top)}</b>` : ''}</p>`;
 }
 
 function exerciseView(a) {
@@ -159,7 +159,7 @@ function exerciseView(a) {
   return `<div class="screen no-tabs">
     <header class="col" style="gap:12px">
       <div class="row"><button class="icon-btn surface" data-act="leave" aria-label="${tr('Close', 'Lukk')}">${icon('x', 20)}</button>
-        <div class="grow" style="min-width:0"><h1 class="h2">${esc(def.name)}</h1><p class="small muted">${tr('Exercise', 'Øvelse')} ${idx + 1} ${tr('of', 'av')} ${list.length} · ${mins} min${a.light ? ` · ${tr('light day', 'lett dag')}` : ''}${def.slots ? ` · <button class="link-btn small" data-act="placePick" style="display:inline;padding:0;min-height:0">${esc(L(PLACES[a.place || currentPlace()]?.name || PLACES.home.name))} ${icon('chevD', 12, 'style="vertical-align:-1px"')}</button>` : ''}</p></div>
+        <div class="grow" style="min-width:0"><h1 class="h2">${esc(niceName(def.name))}</h1><p class="small muted">${tr('Exercise', 'Øvelse')} ${idx + 1} ${tr('of', 'av')} ${list.length} · ${mins} min${a.light ? ` · ${tr('short version', 'kortversjon')}` : ''}${def.slots ? ` · <button class="link-btn small" data-act="placePick" style="display:inline;padding:0;min-height:0">${esc(L(PLACES[a.place || currentPlace()]?.name || PLACES.home.name))} ${icon('chevD', 12, 'style="vertical-align:-1px"')}</button>` : ''}</p></div>
         <button class="icon-btn surface" data-act="overview" aria-label="${tr('All exercises', 'Alle øvelser')}">${icon('list', 20)}</button></div>
       <div class="meals-bar">${list.map((e, i) => `<span class="${(a.sets?.[e.id] || []).length >= (e.sets || 1) ? 'done' : i === idx ? 'now' : ''}"></span>`).join('')}</div>
     </header>
@@ -174,45 +174,45 @@ function exerciseView(a) {
         <a class="link-btn small" href="${esc(video)}" target="_blank" rel="noopener">${icon('play', 14)} ${tr('Video', 'Video')}</a>
         ${easier && !mobility ? `<button class="btn tiny secondary" data-act="variant" data-id="${easier}">${tr('Easier', 'Lettere')}</button>` : ''}
         ${harder && !mobility ? `<button class="btn tiny secondary" data-act="variant" data-id="${harder}">${tr('Harder', 'Tyngre')}</button>` : ''}</div>
-      <div class="row wrap" style="gap:6px"><span class="badge accent">${tr('Goal', 'Mål')}: ${target.sets} × ${range ? `${range.lo}–${range.hi}` : target.reps}${isTime ? ' s' : ''}</span>
-        ${item.focus ? `<span class="badge">${tr('Focus', 'Fokus')}</span>` : ''}
-        ${wantsKg && lastTop ? `<span class="badge num">${tr('Best', 'Beste')} ${kgFmt(lastTop)}</span>` : ''}</div>
+      <p class="goal-line">${isTime
+        ? tr(`Do <b>${target.sets} ${target.sets === 1 ? 'round' : 'rounds'}</b>. Each round: hold for <b>${target.reps} sec</b>, then rest.`, `Gjør <b>${target.sets} ${target.sets === 1 ? 'runde' : 'runder'}</b>. Hver runde: hold i <b>${target.reps} sek</b>, så pause.`)
+        : tr(`Do <b>${target.sets} ${target.sets === 1 ? 'round' : 'rounds'}</b>. Each round: <b>${range ? `${range.lo}–${range.hi}` : target.reps} times</b> in a row, then rest.`, `Gjør <b>${target.sets} ${target.sets === 1 ? 'runde' : 'runder'}</b>. Hver runde: <b>${range ? `${range.lo}–${range.hi}` : target.reps} ganger</b> på rad, så pause.`)}</p>
       ${lastTimeLine(exId, isTime)}
-      ${range && !sets.length ? `<p class="small soft" style="line-height:1.45">${wantsKg ? tr(`Pick a weight you can lift ${range.lo}–${range.hi} times with good form.`, `Velg en vekt du klarer ${range.lo}–${range.hi} ganger med fin teknikk.`) : tr(`Aim for ${range.lo}–${range.hi}. Fewer is fine while you build up.`, `Sikt på ${range.lo}–${range.hi}. Færre er greit mens du bygger deg opp.`)}</p>` : ''}
-      ${hint?.kg ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:6px"><span>${tr(`You reached the top of the range on every set last time. Want to try ${kgFmt(hint.kg)}? Only if it feels good.`, `Du nådde toppen av området i alle settene sist. Vil du prøve ${kgFmt(hint.kg)}? Bare hvis det føles bra.`)}</span>
+      ${range && !sets.length ? `<p class="small soft" style="line-height:1.45">${wantsKg ? tr(`Pick a weight you can lift ${range.lo}–${range.hi} times with good form. Not sure? Start light.`, `Velg en vekt du klarer ${range.lo}–${range.hi} ganger med fin teknikk. Usikker? Start lett.`) : tr(`Fewer than ${range.lo} is fine while you build up.`, `Færre enn ${range.lo} er helt greit mens du bygger deg opp.`)}</p>` : ''}
+      ${hint?.kg ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:6px"><span>${tr(`You managed the top number in every round last time. Want to try ${kgFmt(hint.kg)}? Only if it feels good.`, `Du klarte det høyeste tallet i alle rundene sist. Vil du prøve ${kgFmt(hint.kg)}? Bare hvis det føles bra.`)}</span>
         <button class="btn tiny secondary" style="align-self:flex-start" data-act="useKg" data-kg="${hint.kg}">${tr(`Use ${kgFmt(hint.kg)}`, `Bruk ${kgFmt(hint.kg)}`)}</button></div></div>` : ''}
-      ${hint?.harder ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:6px"><span>${tr(`You reached the top of the range on every set last time. Ready for ${exName(hint.harder)}?`, `Du nådde toppen av området i alle settene sist. Klar for ${exName(hint.harder)}?`)}</span>
+      ${hint?.harder ? `<div class="note">${icon('sparkle', 18)}<div class="grow col" style="gap:6px"><span>${tr(`You managed the top number in every round last time. Ready for ${exName(hint.harder)}?`, `Du klarte det høyeste tallet i alle rundene sist. Klar for ${exName(hint.harder)}?`)}</span>
         <button class="btn tiny secondary" style="align-self:flex-start" data-act="variant" data-id="${hint.harder}">${tr('Try it today', 'Prøv i dag')}</button></div></div>` : ''}
-      ${hint?.tempo ? `<div class="note">${icon('sparkle', 18)}<span>${tr('You reached the top of the range last time. Make it harder: lower slowly (3 seconds) and pause at the bottom.', 'Du nådde toppen av området sist. Gjør det tyngre: senk sakte (3 sekunder) og ta en pause nederst.')}</span></div>` : ''}
+      ${hint?.tempo ? `<div class="note">${icon('sparkle', 18)}<span>${tr('You managed the top number last time. Make it harder: lower slowly (3 seconds) and pause at the bottom.', 'Du klarte det høyeste tallet sist. Gjør det tyngre: senk sakte (3 sekunder) og ta en pause nederst.')}</span></div>` : ''}
     </section>
-    <section class="card" aria-label="${tr('Sets', 'Sett')}">
-      <div class="row between"><h2 class="h3">${sets.length ? `${sets.length} ${tr('of', 'av')} ${target.sets} ${tr('sets', 'sett')}` : tr('Log your first set', 'Logg første sett')}</h2>
-        <span class="small muted">${tr('Stop 2–3 reps before it gets hard', 'Stopp 2–3 reps før det blir tungt')}</span></div>
-      ${sets.length ? `<div class="sets">${sets.map((v, i) => `<div class="set"><span class="n">${i + 1}</span><span class="grow num">${isTime ? `${v} s` : `${v} ${tr('reps', 'reps')}`}${wantsKg ? ` · ${kgText(kgs[i])}` : ''}</span>
-        <button class="icon-btn" style="width:34px;height:34px;background:transparent" data-act="unset" data-i="${i}" aria-label="${tr('Remove set', 'Fjern sett')}">${icon('x', 16)}</button></div>`).join('')}</div>` : ''}
-      <div class="row between"><span class="small muted">${isTime ? tr('Seconds', 'Sekunder') : tr('Reps', 'Reps')}</span>
+    <section class="card round-card" aria-label="${tr('Rounds', 'Runder')}">
+      <div><h2 class="h2">${goalMet ? `${icon('check', 20, 'style="vertical-align:-3px;color:var(--accent)"')} ${tr(`All ${target.sets} rounds done`, `Alle ${target.sets} rundene er gjort`)}` : tr(`Round ${sets.length + 1} of ${target.sets}`, `Runde ${sets.length + 1} av ${target.sets}`)}</h2>
+        <p class="small muted" style="margin-top:2px">${goalMet ? tr('Go on to the next exercise, or do one more round if you want.', 'Gå videre til neste øvelse, eller ta en runde til om du vil.') : isTime ? tr(`Hold for ${target.reps} seconds. Breathe calmly.`, `Hold i ${target.reps} sekunder. Pust rolig.`) : tr(`Do it ${range ? `${range.lo}–${range.hi}` : target.reps} times. Stop when you have about 2 left in you.`, `Gjør den ${range ? `${range.lo}–${range.hi}` : target.reps} ganger. Stopp når du har ca. 2 igjen i deg.`)}</p></div>
+      ${sets.length ? `<div class="sets">${sets.map((v, i) => `<div class="set"><span class="n">${i + 1}</span><span class="grow num">${tr('Round', 'Runde')} ${i + 1}: ${isTime ? `${v} ${tr('sec', 'sek')}` : `${v} ${tr('times', 'ganger')}`}${wantsKg ? ` · ${kgText(kgs[i])}` : ''}</span>
+        <button class="icon-btn" style="width:34px;height:34px;background:transparent" data-act="unset" data-i="${i}" aria-label="${tr('Remove round', 'Fjern runde')}">${icon('x', 16)}</button></div>`).join('')}</div>` : ''}
+      <div class="row between"><span class="small" style="font-weight:600">${isTime ? tr('Seconds held', 'Sekunder du holdt') : tr('How many times?', 'Hvor mange ganger?')}</span>
         <div class="stepper"><button data-act="val" data-d="${isTime ? -5 : -1}" aria-label="${tr('Less', 'Mindre')}">−</button>
         <span class="v num" style="font-size:20px">${value}</span>
         <button data-act="val" data-d="${isTime ? 5 : 1}" aria-label="${tr('More', 'Mer')}">+</button></div></div>
-      ${wantsKg ? `<div class="row between"><span class="small muted">${tr('Weight', 'Vekt')}</span>
+      ${wantsKg ? `<div class="row between"><span class="small" style="font-weight:600">${tr('Weight', 'Vekt')}${(ex.equip || []).includes('dumbbell') && !(ex.equip || []).includes('barbell') ? `<span class="tiny muted" style="display:block;font-weight:400">${tr('per dumbbell', 'per manual')}</span>` : ''}</span>
         <div class="stepper"><button data-act="kg" data-d="${-kgStep(ex)}" aria-label="${tr('Lighter', 'Lettere')}">−</button>
         <span class="v num kgv" role="button" tabindex="0" data-act="kgType" style="font-size:20px;min-width:80px" aria-label="${tr('Type the weight', 'Skriv inn vekten')}">${kg ? kgFmt(kg) : '– kg'}</span>
         <button data-act="kg" data-d="${kgStep(ex)}" aria-label="${tr('Heavier', 'Tyngre')}">+</button></div></div>` : ''}
       ${isTime ? `<div class="btns"><button class="btn ${goalMet ? 'secondary' : 'primary'}" data-act="countdown">${icon('clock', 18)} ${countdown ? `<span id="cd-v">${mmss(countdown.until - Date.now())}</span>` : `${tr('Start', 'Start')} ${value} s`}</button>
-          <button class="btn secondary" data-act="logset">${tr('Log it', 'Logg')}</button></div>`
-        : `<button class="btn ${goalMet ? 'secondary' : 'primary'}" data-act="logset">${icon('check', 18)} ${goalMet ? tr('Log an extra set', 'Logg et ekstra sett') : tr('Log set', 'Logg sett')}</button>`}
+          <button class="btn secondary" data-act="logset">${icon('check', 18)} ${tr('Done', 'Ferdig')}</button></div>`
+        : `<button class="btn ${goalMet ? 'secondary' : 'primary'}" data-act="logset">${icon('check', 18)} ${goalMet ? tr('One more round', 'En runde til') : tr(`Round ${sets.length + 1} done`, `Ferdig med runde ${sets.length + 1}`)}</button>`}
     </section>
     ${rest ? `<div class="card tight" style="flex-direction:row;align-items:center;gap:12px">
       <div class="timer-ring"><svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="23" fill="none" stroke="var(--surface2)" stroke-width="5"/>
         <circle id="rest-ring" cx="28" cy="28" r="23" fill="none" stroke="var(--accent-line)" stroke-width="5" stroke-linecap="round" stroke-dasharray="144.5" stroke-dashoffset="0"/></svg>
         <span class="v" id="rest-v">${mmss(rest.until - Date.now())}</span></div>
-      <div class="grow"><p class="h3">${tr('Rest', 'Pause')}</p><p class="small muted">${tr('Breathe. Sip some water.', 'Pust. Ta en slurk vann.')}</p></div>
+      <div class="grow"><p class="h3">${tr('Rest', 'Pause')}</p><p class="small muted">${tr('Breathe and sip some water. Next round when the time is up.', 'Pust og ta en slurk vann. Neste runde når tiden er ute.')}</p></div>
       <div class="col" style="gap:6px"><button class="btn tiny secondary" data-act="restPlus">+15 s</button><button class="btn tiny secondary" data-act="skipRest">${tr('Skip', 'Hopp over')}</button></div></div>` : ''}
-    ${goalMet && !rest && !isLast ? `<div class="note">${icon('check', 18)}<span>${tr('Goal reached for this one. On to the next when you are ready.', 'Målet er nådd for denne. Videre til neste når du er klar.')}</span></div>` : ''}
+    ${goalMet && !rest && !isLast ? `<div class="note">${icon('check', 18)}<span>${tr('Done with this exercise. Tap "Next exercise" when you are ready.', 'Ferdig med denne øvelsen. Trykk «Neste øvelse» når du er klar.')}</span></div>` : ''}
     <div class="btns">
       <button class="btn secondary" data-act="prev" ${idx === 0 ? 'disabled' : ''}>${icon('chevL', 18)} ${tr('Back', 'Tilbake')}</button>
       ${isLast ? `<button class="btn primary" data-act="finish">${icon('check', 18)} ${tr('Finish', 'Ferdig')}</button>`
-        : `<button class="btn ${goalMet ? 'primary' : 'secondary'}" data-act="next">${tr('Next', 'Neste')} ${icon('chevR', 18)}</button>`}</div>
+        : `<button class="btn ${goalMet ? 'primary' : 'secondary'}" data-act="next">${tr('Next exercise', 'Neste øvelse')} ${icon('chevR', 18)}</button>`}</div>
     <button class="link-btn" style="align-self:center" data-act="finish">${tr('Feeling sick or tired? End here. It still counts.', 'Kvalm eller sliten? Avslutt her. Det teller likevel.')}</button>
   </div>`;
 }
@@ -251,7 +251,7 @@ function startTick() {
       if (left <= 0) {
         rest = null;
         try { navigator.vibrate?.(200); } catch (e) { /* not on iOS */ }
-        toast(tr('Rest done. Next set when you are ready.', 'Pausen er over. Neste sett når du er klar.'));
+        toast(tr('Rest done. Next round when you are ready.', 'Pausen er over. Neste runde når du er klar.'));
         nav.rerender();
       }
     }
@@ -262,7 +262,7 @@ function startTick() {
       if (left <= 0) {
         countdown = null;
         logSet();
-        toast(tr('Time! Set logged.', 'Tiden er ute! Sett logget.'));
+        toast(tr('Time! Round done.', 'Tiden er ute! Runden er ferdig.'));
       }
     }
   }, 250);
@@ -321,7 +321,7 @@ function overviewSheet() {
     html: `<div class="list">${list.map((e, i) => {
       const done = (a.sets?.[e.id] || []).length;
       return `<button class="item" data-act="jump" data-i="${i}"><span class="n num" style="width:26px;font-weight:700;color:${i === a.ex ? 'var(--accent)' : 'var(--muted)'}">${i + 1}</span>
-        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(exName(e.id))}</span><span class="s">${e.sets} × ${e.lo && e.hi && getEx(e.id)?.mode !== 'time' ? `${e.lo}–${e.hi}` : e.reps}</span></span>
+        <span class="grow"><span class="t" style="display:block;font-weight:500">${esc(exName(e.id))}</span><span class="s">${goalText(e)}</span></span>
         <span class="small num ${done >= e.sets ? '' : 'muted'}" style="${done >= e.sets ? 'color:var(--accent);font-weight:700' : ''}">${done}/${e.sets}${done >= e.sets ? ' ✓' : ''}</span></button>`;
     }).join('')}</div>
       <button class="btn outline" data-act="add">${icon('plus', 18)} ${tr('Add an exercise to this workout', 'Legg til en øvelse i økten')}</button>`,
@@ -506,7 +506,7 @@ export const actions = {
     if (!setCount(a) && a.id !== 'walk') {
       const ok = await confirmSheet({
         title: tr('End the workout?', 'Avslutte økten?'),
-        text: tr('No sets are logged yet. Save it anyway as a short session?', 'Ingen sett er logget ennå. Lagre likevel som en kort økt?'),
+        text: tr('No rounds are done yet. Save it anyway as a short session?', 'Ingen runder er gjort ennå. Lagre likevel som en kort økt?'),
         yes: tr('Save it', 'Lagre'),
         no: tr('Keep going', 'Fortsett'),
       });
