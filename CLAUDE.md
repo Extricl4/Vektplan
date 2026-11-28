@@ -17,7 +17,8 @@ UI text is bilingual: `tr('English', 'Norsk')` and `L({ en, nb })`.
 ## Releasing an update (always do this when changing the app)
 1. Make the change.
 2. `python3 tools/bump.py X.Y.Z "English notes" "Norske notater"` — bumps `js/version.js`, `version.json`, and `sw.js` (version + offline file list).
-3. Commit and push to `main`. The app shows "Update ready"; Settings → Update now installs it.
+3. Commit and push to `main`. Since 1.8.1 the app installs a ready update by itself when he opens it on a main tab
+   (not mid-workout, not in a sheet or text field) and shows "Updated to X"; Settings → Update now still works too.
 
 If you add a new file under `css/`, `js/`, `fonts/` or `icons/`, the bump script picks it up automatically.
 

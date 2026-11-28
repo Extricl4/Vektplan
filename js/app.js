@@ -158,3 +158,11 @@ if (!location.hash) history.replaceState(null, '', '#/today');
 nav.stack = [location.hash];
 render();
 initUpdates();
+// Tell him quietly when the app updated itself.
+try {
+  const v = localStorage.getItem('vektplan.updatedTo');
+  if (v) {
+    localStorage.removeItem('vektplan.updatedTo');
+    setTimeout(() => toast(tr(`Updated to ${v}. See what's new in Settings.`, `Oppdatert til ${v}. Se hva som er nytt i Innstillinger.`), 3200), 600);
+  }
+} catch (e) { /* ignore */ }

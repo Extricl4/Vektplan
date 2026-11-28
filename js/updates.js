@@ -33,6 +33,26 @@ export function onUpdate(fn) {
 function setWaiting(worker) {
   waiting = worker;
   set('ready');
+  maybeAutoApply();
+}
+
+// Hassle-free: when you've just opened the app on a main tab (not in a workout, a sheet or a text field),
+// a ready update installs by itself. Otherwise it waits for the next time you open the app.
+let openedAt = Date.now();
+const TABS = ['#/today', '#/food', '#/train', '#/progress', '#/food/diary', '#/food/recipes', ''];
+function autoOk() {
+  if (document.visibilityState !== 'visible' || Date.now() - openedAt > 20_000) return false;
+  if (!TABS.includes(location.hash.split('?')[0])) return false;
+  if (document.querySelector('#layer .sheet')) return false;
+  const el = document.activeElement;
+  if (el && el.matches?.('input, textarea, select')) return false;
+  try {
+    if (JSON.parse(localStorage.getItem('vektplan.v1') || '{}').activeWorkout) return false;
+  } catch (e) { /* ignore */ }
+  return true;
+}
+function maybeAutoApply() {
+  if (waiting && autoOk()) applyUpdate();
 }
 
 export async function initUpdates() {
@@ -61,7 +81,11 @@ export async function initUpdates() {
   });
   setTimeout(() => checkForUpdate(true), 2500);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkForUpdate(true);
+    if (document.visibilityState === 'visible') {
+      openedAt = Date.now();
+      if (waiting) maybeAutoApply();
+      else checkForUpdate(true);
+    }
   });
 }
 
@@ -101,6 +125,7 @@ export async function checkForUpdate(quiet = false) {
 
 // Install the new version and reload.
 export async function applyUpdate() {
+  try { localStorage.setItem('vektplan.updatedTo', update.remote || ''); } catch (e) { /* ignore */ }
   if (waiting) {
     set('installing');
     waiting.postMessage({ type: 'SKIP_WAITING' });

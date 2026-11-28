@@ -1,9 +1,15 @@
 {
-  "version": "1.8.0",
-  "date": "2026-11-27",
-  "notes": "Easier and more motivating: today's training with one Start button on Today, weeks in a row, and protein in one tap (shake, eggs, milk, cheese, tuna) with an optional goal. After training: your week, your streak and one-tap protein.",
-  "notes_nb": "Enklere og mer motiverende: dagens trening med én Start-knapp på I dag, uker på rad, og protein med ett trykk (shake, egg, melk, ost, tunfisk) med et valgfritt mål. Etter trening: uka di, rekka di og protein med ett trykk.",
+  "version": "1.8.1",
+  "date": "2026-11-28",
+  "notes": "Updates now install by themselves when you open the app.",
+  "notes_nb": "Oppdateringer installeres nå av seg selv når du åpner appen.",
   "history": [
+    {
+      "version": "1.8.0",
+      "date": "2026-11-27",
+      "notes": "Easier and more motivating: today's training with one Start button on Today, weeks in a row, and protein in one tap (shake, eggs, milk, cheese, tuna) with an optional goal. After training: your week, your streak and one-tap protein.",
+      "notes_nb": "Enklere og mer motiverende: dagens trening med én Start-knapp på I dag, uker på rad, og protein med ett trykk (shake, egg, melk, ost, tunfisk) med et valgfritt mål. Etter trening: uka di, rekka di og protein med ett trykk."
+    },
     {
       "version": "1.7.0",
       "date": "2026-11-27",
